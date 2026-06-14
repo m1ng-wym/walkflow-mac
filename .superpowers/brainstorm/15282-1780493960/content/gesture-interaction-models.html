@@ -1,0 +1,37 @@
+<h2>三种手势交互模型</h2>
+<p class="subtitle">站在 1-2 米外时，每种模型下你实际会怎样操作。可以点击你偏好的方向。</p>
+
+<div class="cards">
+  <div class="card" data-choice="direct" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>A. 直接动作模型</h3>
+      <p><strong>怎么做：</strong>App 开启后，手进入摄像头画面即可直接控制。</p>
+      <p>手掌向上/向下扫动 -> 立即滚动屏幕。</p>
+      <p>做一个指定手势 -> 立即触发语音输入快捷键。</p>
+      <p>做停止手势 -> 暂停识别。</p>
+      <p><strong>体感：</strong>最快、最像空中鼠标，但对误触保护要求最高。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="armed" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>B. 准备姿态模型</h3>
+      <p><strong>怎么做：</strong>先做“准备姿态”，例如手掌面向摄像头停住 0.5 秒。</p>
+      <p>屏幕显示已进入控制窗口，例如 5 秒。</p>
+      <p>控制窗口内：上下扫动 -> 滚动；指定手势 -> 触发快捷键。</p>
+      <p>超时、放下手、或停止手势 -> 退出控制窗口。</p>
+      <p><strong>体感：</strong>像先唤醒再操作，可靠性和远距效率比较平衡。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="modes" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>C. 模式化命令模型</h3>
+      <p><strong>怎么做：</strong>先用不同手势切换模式。</p>
+      <p>进入滚动模式后：上下手势只负责滚动。</p>
+      <p>进入快捷键模式后：不同手势触发不同按键。</p>
+      <p>进入暂停模式后：忽略所有控制动作，直到硬开关或恢复手势解除。</p>
+      <p><strong>体感：</strong>更像遥控器，有清晰模式，但需要记住模式和当前状态。</p>
+    </div>
+  </div>
+</div>

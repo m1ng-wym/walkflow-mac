@@ -1,0 +1,71 @@
+# macOS 远距手势控制工具进度
+
+## 已完成
+
+- 确认当前仓库是 `/Users/Zhuanz/Documents/Magic-tool`。
+- 确认当前项目为新仓库，尚未存在 macOS App 代码。
+- 用户确认正式项目名为 `WalkFlow-Mac`。
+- 用户确认 GitHub 远端仓库为 `https://github.com/m1ng-wym/walkflow-mac.git`。
+- 读取项目级 `AGENTS.md`。
+- 启动 superpowers brainstorming visual companion。
+- 用户确认第一版选择“完整远距控制”作为成功标准。
+- 创建本长任务四文档。
+- 按用户要求将任务目录改名为 `docs/tasks/001-gesture-control-macos-app-bootstrap/`。
+- 用户确认暂停/恢复识别采用混合控制：菜单栏和全局快捷键作为硬开关，远距手势作为软开关。
+- 用户确认第一版采用准备姿态模型：摊开手掌面向摄像头并短暂停顿后进入控制窗口。
+- 用户确认控制窗口退出条件：约 5 秒无新动作指令、手部离开画面、停止手势。
+- 用户用三张图片确认手势词汇表：五指张开手掌面向摄像头为准备姿态，一指向上且其余四指收缩为屏幕向上滚动，一指向下且其余四指收缩为屏幕向下滚动。
+- 用户确认滚动节奏采用短按/长按混合：姿态稳定约 0.2 到 0.4 秒先滚一段，继续保持超过阈值后连续滚动；连续滚动中手势变化即停止。
+- 用户确认停止手势采用握拳。
+- 用户确认第一版快捷键触发目标为右侧 `Command` 键，用于语音输入开始/结束切换。
+- 用户通过图片确认右侧 `Command` 键触发手势为 `OK` 捏合：拇指和食指形成圆形接触，其余手指张开。
+- 用户确认 `OK` 手势采用稳定触发加冷却：稳定约 0.2 到 0.4 秒触发一次，约 1 秒冷却；冷却后仍保持 `OK` 不重复触发，必须松开后重做。
+- 用户确认 App 外壳采用主窗口为主、菜单栏状态为辅：主窗口显示摄像头预览、手势状态、权限和设置；菜单栏做快速开关和其他配置项入口。
+- 用户确认后续开发全流程必须使用 AppKit，不可以使用 SwiftUI。
+- 用户确认菜单栏图标显示总状态，并提供 `Enable`、`Pause`、`Show HUD`、`Open Window`、`Settings`、`Quit`。
+- 用户确认状态反馈采用可 pin 的固定浮动面板，固定浮动在屏幕右上角，不因点击其他区域而消失，并用简单图形表示上滚、下滚、触发右侧 `Command` 等状态。
+- 用户确认浮动面板可拖动并记住位置：默认右上角，可拖动避开 App UI，下一次启动恢复最后位置。
+- 已同步更新项目级 `AGENTS.md` 的长期项目事实和技术栈约束。
+- 用户确认浮动面板同一时间只显示一个大图标，不同时显示多个小图标。
+- 用户提供浮动面板草图：小巧简洁，顶部居中小箭头，左上角状态点，中心区域显示当前状态图标。
+- 用户确认状态点规则：阻塞/不可控状态使用红点，`Standby` 和正常可用状态使用绿点。
+- 用户确认 `Standby` 中心区域保持空白，只用绿点表示。
+- 用户确认中心状态图标接入 useAnimations 动效图标，并必须保留网站原样动效。
+- 用户确认图标映射：`Disabled` 使用 `Lock / Unlock`，`Permission` 使用 `Alert triangle`，`Ready` 使用 `Infinity`，`Scroll Up` 使用 `Arrow up`，`Scroll Down` 使用 `Arrow down`，`Command` 使用 `Dribbble` hover 动效。
+- 用户确认 `Command` 结束后的回退规则：不回到 `Ready` 图标；手仍可识别时回 `Standby` 空白绿点，手不在画面时红点阻塞。
+- 用户确认 `Hand Lost`、`Stop`、`Paused`、`Cooldown` 暂不显示中心图标；`Hand Lost` 和 `Stop` 使用红点。
+- 已核验 `react-useanimations@2.10.0` npm 包存在 `lock`、`alertTriangle`、`infinity`、`arrowUp`、`arrowDown`、`dribbble` Lottie JSON 资源。
+- 用户确认 Lottie 动效集成选择 `AppKit + 原生 Lottie macOS renderer`，不使用 SwiftUI，不默认使用 WebView。
+- 用户确认主窗口布局为左右分栏，比例约 `1:4`：左侧配置、权限、HUD 和快捷键，右侧摄像头预览和实时识别。
+- 用户确认右侧摄像头预览为主要区域，实时识别把浮动窗口样式照搬一次，固定在摄像头预览页右上角。
+- 用户确认权限体验采用主窗口权限面板常驻加启动时一次性引导。
+- 用户确认硬开关第一版不预设全局快捷键，但在设置中保留可配置选项。
+- 用户要求手势识别技术方案进行更广泛调研，覆盖 GitHub、Reddit、X/Twitter 和相关开源项目，并满足免费、轻量两个硬约束。
+- 已完成初轮调研：Apple Vision、MediaPipe、OpenCV、TensorFlow.js/Fingerpose、自训练 Core ML、商业/SDK 类方案均已纳入比较。
+- 已评估 Roboflow `supervision` 项目：确认其为 MIT 开源 Python 计算机视觉工具库，适合数据/检测/标注/追踪/keypoint 结果处理，不适合作为本 AppKit 常驻手势控制工具的核心运行时依赖。
+- 应用户要求重新量化 `supervision`：在本机全新 venv 中测得 23 个依赖包、wheel 下载约 87.6 MB、安装后 `site-packages` 约 331 MB、`import supervision` 最大 RSS 约 128 MB；同时量化对照 Python `mediapipe` 为 19 个依赖包、wheel 下载约 88.1 MB、安装后约 299 MB、`import mediapipe` 最大 RSS 约 78 MB，MediaPipe hand landmarker 模型约 7.5 MB。
+- 用户认可技术主线：`AVFoundation + Apple Vision hand pose + 自研轻量 GestureClassifier + GestureStateMachine + CGEvent/Accessibility + AppKit`。
+- 用户认可 MediaPipe 作为带进入门槛的备选验证方向，Roboflow `supervision` 不进入第一版运行时。
+- 已写入设计规格：`docs/superpowers/specs/2026-06-14-gesture-control-macos-app-design.md`。
+- 已完成设计规格自审，并补充默认手势时间阈值、Vision/MediaPipe 进入门槛、第一版性能门槛和规格自审结果。
+- 用户确认设计规格可以进入下一步。
+- 已使用 writing-plans skill 将后续实现计划重写到当前任务目录的 `plan.md`，没有另起 `docs/superpowers/plans/` 文件。
+- 已完成实现计划自审：检查规格覆盖、占位词、类型/命名一致性和项目规则一致性。
+- 用户确认本项目本地 commit 不需要额外同意；push、deploy 和破坏性 git 操作必须停止等待用户明确确认，破坏性 git 操作默认不做。
+- 已将上述 git 权限规则同步到 `plan.md` 和项目级 `AGENTS.md`，避免后续执行规则冲突。
+- 已确认本地当前分支为 `main`。
+- 已确认 `origin` 指向 GitHub 远端仓库 `https://github.com/m1ng-wym/walkflow-mac.git`。
+- 已统一文档口径：项目名 `WalkFlow-Mac`，远端仓库 `https://github.com/m1ng-wym/walkflow-mac.git`，SwiftPM 计划命名为 `WalkFlowMac` / `WalkFlowCore` / `WalkFlowMacApp`。
+- 已调整 `.gitignore`：不再忽略 `AGENTS.md` 或当前 `.superpowers/` 内容；仅忽略未来本地系统文件、构建产物和临时验证产物。
+
+## 当前状态
+
+Git 远端已关联，正在准备首次 commit 和首次 push。
+
+## 下一步
+
+跟踪当前项目文件，commit 并 push 到 `m1ng-wym/walkflow-mac`。
+
+## 阻塞
+
+暂无阻塞。
