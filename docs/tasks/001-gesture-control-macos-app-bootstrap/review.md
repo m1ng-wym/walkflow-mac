@@ -36,6 +36,7 @@
 - 已同步修正 `plan.md` 和 `AGENTS.md`，移除 commit 前置确认冲突。
 - 已统一正式项目口径：`WalkFlow-Mac`、`https://github.com/m1ng-wym/walkflow-mac.git`、默认分支 `main`。
 - 实现计划中的 SwiftPM 命名已更新为 `WalkFlowMac` package/executable、`WalkFlowCore` library、`WalkFlowMacApp` app target，App 显示名为 `WalkFlow-Mac`。
+- 当前项目内容已纳入 Git 跟踪，并完成首次 commit / push。
 
 ## 验证命令和结果
 
@@ -46,6 +47,10 @@
 - 已确认本地分支：`main`。
 - 已确认远端目标：`https://github.com/m1ng-wym/walkflow-mac.git`。
 - 已确认当前 `origin` fetch/push URL 均为 `https://github.com/m1ng-wym/walkflow-mac.git`。
+- 已执行 `git add -A`，当前项目文件已纳入暂存并提交。
+- 已执行 `git commit -m "docs: initialize WalkFlow-Mac planning docs"`，提交成功。
+- 已执行 `git push -u origin main`，远端 `main` 分支创建成功，本地 `main` 已设置为跟踪 `origin/main`。
+- 已执行 `git ls-remote --heads origin main`，确认远端 `refs/heads/main` 存在。
 
 ## 跳过的检查
 

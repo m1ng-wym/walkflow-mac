@@ -57,14 +57,17 @@
 - 已确认 `origin` 指向 GitHub 远端仓库 `https://github.com/m1ng-wym/walkflow-mac.git`。
 - 已统一文档口径：项目名 `WalkFlow-Mac`，远端仓库 `https://github.com/m1ng-wym/walkflow-mac.git`，SwiftPM 计划命名为 `WalkFlowMac` / `WalkFlowCore` / `WalkFlowMacApp`。
 - 已调整 `.gitignore`：不再忽略 `AGENTS.md` 或当前 `.superpowers/` 内容；仅忽略未来本地系统文件、构建产物和临时验证产物。
+- 已将当前项目内容纳入 Git 跟踪，包括 `.gitignore`、`AGENTS.md`、`docs/` 和当前 `.superpowers/` brainstorm 记录。
+- 已完成首次本地提交：`docs: initialize WalkFlow-Mac planning docs`。
+- 已完成首次 push：本地 `main` 已推送到 `origin/main`，并设置 upstream 跟踪。
 
 ## 当前状态
 
-Git 远端已关联，正在准备首次 commit 和首次 push。
+Git 远端关联、当前文件跟踪、首次 commit 和首次 push 已完成。当前分支为 `main`，跟踪 `origin/main`。
 
 ## 下一步
 
-跟踪当前项目文件，commit 并 push 到 `m1ng-wym/walkflow-mac`。
+进入 `plan.md` 的 Phase 0 preflight，随后开始 AppKit-only macOS App bootstrap 实现。
 
 ## 阻塞
 
