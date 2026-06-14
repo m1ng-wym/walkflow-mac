@@ -24,7 +24,7 @@
 - useAnimations/npm 包授权和 attribution 需要在实现计划中复核并沉淀到第三方资源说明，避免遗漏开源归属要求。
 - 用户已选择 `AppKit + 原生 Lottie macOS renderer`，不用 WebView 作为默认实现路径；风险是原生 renderer 与 useAnimations 网站的 `lottie-web` 表现可能有细微差异。
 - 后续验证必须包含原始 useAnimations/lottie-web 动效与原生 Lottie macOS renderer 的视觉对比；如果存在差异，应优先调整播放区间、方向、循环和速度控制。
-- 用户已确认所有当前项目内容需要纳入仓库；`.gitignore` 已调整为不再忽略 `AGENTS.md` 或当前 `.superpowers/` 内容，仅忽略未来本地系统文件、构建产物和临时验证产物。
+- 用户最新确认 `AGENTS.md` 和 Superpowers 相关文档/内容不希望由 Git 记录；`.gitignore` 已调整为忽略 `AGENTS.md`、`.superpowers/` 和 `docs/superpowers/`。
 
 ## Review 发现
 
@@ -33,10 +33,10 @@
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
 - 用户已更新 git 权限规则：本地 commit 不需要额外同意；push、deploy 和破坏性 git 操作必须停止等待用户明确确认，破坏性 git 操作默认不做。
-- 已同步修正 `plan.md` 和 `AGENTS.md`，移除 commit 前置确认冲突。
+- 已同步修正 `plan.md` 和本地 `AGENTS.md`，移除 commit 前置确认冲突。
 - 已统一正式项目口径：`WalkFlow-Mac`、`https://github.com/m1ng-wym/walkflow-mac.git`、默认分支 `main`。
 - 实现计划中的 SwiftPM 命名已更新为 `WalkFlowMac` package/executable、`WalkFlowCore` library、`WalkFlowMacApp` app target，App 显示名为 `WalkFlow-Mac`。
-- 当前项目内容已纳入 Git 跟踪，并完成首次 commit / push。
+- 当前仓库跟踪内容已排除 `AGENTS.md`、`.superpowers/` 和 `docs/superpowers/`；这些文件保留在本地。
 
 ## 验证命令和结果
 
@@ -51,6 +51,7 @@
 - 已执行 `git commit -m "docs: initialize WalkFlow-Mac planning docs"`，提交成功。
 - 已执行 `git push -u origin main`，远端 `main` 分支创建成功，本地 `main` 已设置为跟踪 `origin/main`。
 - 已执行 `git ls-remote --heads origin main`，确认远端 `refs/heads/main` 存在。
+- 已执行 `git rm --cached -r AGENTS.md .superpowers docs/superpowers`，仅从 Git 索引移除这些路径，本地文件未删除。
 
 ## 跳过的检查
 

@@ -81,8 +81,8 @@ Tests/WalkFlowCoreTests/RecognitionMetricsTests.swift
 ### Task 0.1: Confirm execution baseline
 
 **Files:**
-- Read: `AGENTS.md`
-- Read: `docs/superpowers/specs/2026-06-14-gesture-control-macos-app-design.md`
+- Read local-only if present: `AGENTS.md`
+- Read local-only if present: `docs/superpowers/specs/2026-06-14-gesture-control-macos-app-design.md`
 - Read: `docs/tasks/001-gesture-control-macos-app-bootstrap/task.md`
 - Read: `docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`
 - Read: `docs/tasks/001-gesture-control-macos-app-bootstrap/progress.md`
@@ -2971,13 +2971,13 @@ Mission Control does not leave a stuck or duplicated HUD
 ### Task 15.1: Update task docs and project facts
 
 **Files:**
-- Modify: `AGENTS.md`
+- Modify local-only if present, but do not stage or commit: `AGENTS.md`
 - Modify: `docs/tasks/001-gesture-control-macos-app-bootstrap/progress.md`
 - Modify: `docs/tasks/001-gesture-control-macos-app-bootstrap/review.md`
 
-- [ ] **Step 1: Update `AGENTS.md` only for long-lived facts**
+- [ ] **Step 1: Update local `AGENTS.md` only for long-lived facts**
 
-After implementation actually creates SwiftPM/package/build commands, update `AGENTS.md` with only durable project facts:
+After implementation actually creates SwiftPM/package/build commands, update local `AGENTS.md` with only durable project facts if the file exists:
 
 ```text
 - 包管理器：Swift Package Manager。
@@ -2987,6 +2987,7 @@ After implementation actually creates SwiftPM/package/build commands, update `AG
 ```
 
 Do not add transient test results to `AGENTS.md`.
+Do not stage or commit `AGENTS.md`; it is intentionally ignored and kept local-only.
 
 - [ ] **Step 2: Update progress**
 
@@ -3029,7 +3030,7 @@ swift test
 swift build
 ./script/build_and_run.sh --verify
 UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')"
-rg -n "SwiftUI|$UNFINISHED_PATTERN" Package.swift Sources Tests docs/tasks/001-gesture-control-macos-app-bootstrap docs/superpowers/specs
+rg -n "SwiftUI|$UNFINISHED_PATTERN" Package.swift Sources Tests docs/tasks/001-gesture-control-macos-app-bootstrap
 ```
 
 Expected:
@@ -3050,7 +3051,7 @@ Run:
 ```bash
 git status --short
 git diff --stat
-git diff -- Package.swift Sources Tests script .codex Docs docs/tasks/001-gesture-control-macos-app-bootstrap AGENTS.md
+git diff -- Package.swift Sources Tests script .codex Docs docs/tasks/001-gesture-control-macos-app-bootstrap
 ```
 
 Expected: only files in this plan changed.
@@ -3060,7 +3061,7 @@ Expected: only files in this plan changed.
 Commit the task-scoped implementation files after reviewing `git status --short`:
 
 ```bash
-git add Package.swift Sources Tests script .codex Docs docs/tasks/001-gesture-control-macos-app-bootstrap AGENTS.md
+git add Package.swift Sources Tests script .codex Docs docs/tasks/001-gesture-control-macos-app-bootstrap
 git commit -m "feat: bootstrap gesture control macOS app"
 ```
 

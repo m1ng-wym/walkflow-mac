@@ -52,18 +52,19 @@
 - 已使用 writing-plans skill 将后续实现计划重写到当前任务目录的 `plan.md`，没有另起 `docs/superpowers/plans/` 文件。
 - 已完成实现计划自审：检查规格覆盖、占位词、类型/命名一致性和项目规则一致性。
 - 用户确认本项目本地 commit 不需要额外同意；push、deploy 和破坏性 git 操作必须停止等待用户明确确认，破坏性 git 操作默认不做。
-- 已将上述 git 权限规则同步到 `plan.md` 和项目级 `AGENTS.md`，避免后续执行规则冲突。
+- 已将上述 git 权限规则同步到 `plan.md` 和本地项目级 `AGENTS.md`，避免后续执行规则冲突。
 - 已确认本地当前分支为 `main`。
 - 已确认 `origin` 指向 GitHub 远端仓库 `https://github.com/m1ng-wym/walkflow-mac.git`。
 - 已统一文档口径：项目名 `WalkFlow-Mac`，远端仓库 `https://github.com/m1ng-wym/walkflow-mac.git`，SwiftPM 计划命名为 `WalkFlowMac` / `WalkFlowCore` / `WalkFlowMacApp`。
-- 已调整 `.gitignore`：不再忽略 `AGENTS.md` 或当前 `.superpowers/` 内容；仅忽略未来本地系统文件、构建产物和临时验证产物。
-- 已将当前项目内容纳入 Git 跟踪，包括 `.gitignore`、`AGENTS.md`、`docs/` 和当前 `.superpowers/` brainstorm 记录。
+- 用户最新确认 `AGENTS.md` 和 Superpowers 相关文档/内容不希望由 Git 记录。
+- 已调整 `.gitignore`：忽略 `AGENTS.md`、`.superpowers/` 和 `docs/superpowers/`。
+- 已从 Git 索引移除 `AGENTS.md`、`.superpowers/` 和 `docs/superpowers/`，文件仍保留在本地。
 - 已完成首次本地提交：`docs: initialize WalkFlow-Mac planning docs`。
 - 已完成首次 push：本地 `main` 已推送到 `origin/main`，并设置 upstream 跟踪。
 
 ## 当前状态
 
-Git 远端关联、当前文件跟踪、首次 commit 和首次 push 已完成。当前分支为 `main`，跟踪 `origin/main`。
+Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `main`，跟踪 `origin/main`。最新规则下，`AGENTS.md`、`.superpowers/` 和 `docs/superpowers/` 只保留本地，不再由 Git 跟踪。
 
 ## 下一步
 

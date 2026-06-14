@@ -2,3 +2,8 @@
 .build/
 dist/
 .codex-artifacts/
+
+# Local agent instructions and Superpowers working artifacts stay local.
+AGENTS.md
+.superpowers/
+docs/superpowers/
