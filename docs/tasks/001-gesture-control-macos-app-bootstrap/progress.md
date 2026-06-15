@@ -127,10 +127,20 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - Phase 3 第三次 re-review 发现 1 个 Important：第二次 `OK` 起手但未稳定到 300ms、或第一次 `OK` 后仍在 cooldown 内时，HUD 会短暂清成空白。已按 TDD 补充 `testVoiceInputActiveKeepsCommandHUDDuringSecondOKPendingAndCooldown` 并修复：语音输入会话期间的 `OK` cooldown / pending 帧也保持 Dribbble，直到第二次 `OK` 成功触发后回到 `standby`。
 - Phase 3 最终 re-review 已通过：reviewer 确认无 Critical / Important / Minor，之前所有 Critical / Important 均已关闭。
 - 已重新执行 `swift test --filter GestureStateMachineTests`、`swift test` 和 `swift build`，结果写入 `review.md`。
+- 已完成 Phase 3 checkpoint commit：`d2984f2 feat: add gesture state machine`。
+
+### 2026-06-15 Phase 4 Gesture Classifier 进度
+
+- 已完成 Task 4.1 classifier TDD：
+  - RED：新增 `GestureClassifierTests` 后，focused test 因 `GestureClassifier` 不存在失败。
+  - GREEN：新增 `GestureClassifier`，基于手部关键点几何规则识别 open palm、index up、index down、fist、OK pinch，并在低置信度或缺失快照时返回 `handLost`。
+- 已补充左右手覆盖：`testOpenPalmClassifiesLeftAndRightHands` 证明当前几何分类不依赖左右手枚举，满足 Phase 4 left/right hand 验收要求。
+- Phase 4 code review gate 未发现 Critical / Important；Minor 指出缺少 `classify(nil)` 显式测试，已补充 `testNilSnapshotReturnsHandLost`。
+- 已执行 `swift test --filter GestureClassifierTests`、`swift test`、`swift build`、`git diff --check`、SwiftUI 禁用检查和 `plan.md` hash 检查，结果写入 `review.md`。
 
 ## 下一步
 
-完成 Phase 3 checkpoint commit；随后继续进入 Phase 4 gesture classifier。
+完成 Phase 4 checkpoint commit；随后继续进入 Phase 5 HUD reducer。
 
 ## 阻塞
 

@@ -46,6 +46,8 @@
 - 2026-06-15 Phase 3 第二次 re-review 发现 1 个 Important：语音输入 active 后，`indexUp/indexDown` 仍会走 `scrollOutput`，发滚动 action 并把 HUD 切到箭头图标，违背 Command/Dribbble 需保持到第二次 OK 的要求。已补充 RED 测试并修复：`mode == .ready && isVoiceInputActive == true` 时，除 `okPinch`、`handLost`、`fist` 外的普通手势不发控制 action，HUD 保持 `.dribbble`。
 - 2026-06-15 Phase 3 第三次 re-review 发现 1 个 Important：语音输入 active 时，第二次 `OK` 起手但未稳定到 300ms 或仍在 cooldown 内时，`commandOutput` 会返回空 icon，短暂清掉 Dribbble。已补充 RED 测试并修复：`isVoiceInputActive == true` 时，OK cooldown / pending / latched 分支均返回 `.dribbble`，只有第二次 `OK` 成功触发右侧 `Command` 后才回 `standby` / 空 icon。
 - 2026-06-15 Phase 3 最终 re-review gate：reviewer 只读复审确认无 Critical、Important、Minor；此前所有 Critical / Important 均已关闭。
+- 2026-06-15 Phase 4 实现发现：`GestureClassifier` 当前为轻量几何规则分类器，不引入模型、OpenCV、Python runtime、MediaPipe 或外部服务。当前规则只基于归一化关键点的相对距离和 y 方向关系，后续 Vision gate 必须用真实 1-2 米摄像头样本验证阈值稳定性。
+- 2026-06-16 Phase 4 code review gate：reviewer 未发现 Critical / Important；Minor 指出缺少 `classify(nil)` 显式测试。已补充 `testNilSnapshotReturnsHandLost`，无需改生产代码。
 - 设计规格自审发现并修正了三类可执行性歧义：`Vision` 达标标准、`MediaPipe` 进入门槛、第一版性能门槛。
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
@@ -132,6 +134,19 @@
   - 修复后 `swift test --filter GestureStateMachineTests`：通过，12 个 XCTest，0 failures。
   - 修复后 full `swift test`：通过，18 个 XCTest，0 failures。
   - 修复后 `swift build`：通过，`Build complete`。
+- 2026-06-15 Phase 4 TDD 和验证：
+  - `swift test --filter GestureClassifierTests` RED：失败原因符合预期，`GestureClassifier` 不存在。
+  - 新增 `GestureClassifier` 后，`swift test --filter GestureClassifierTests`：通过，6 个 XCTest，0 failures。
+  - 补充 left/right hand 覆盖后，`swift test --filter GestureClassifierTests`：通过，7 个 XCTest，0 failures。
+  - Phase 4 full `swift test`：通过，25 个 XCTest，0 failures。
+  - `swift build`：通过，`Build complete`。
+  - `git diff --check`：通过，无 whitespace error 输出。
+  - Phase 4 review Minor 修复后，`swift test --filter GestureClassifierTests`：通过，8 个 XCTest，0 failures。
+  - Phase 4 review Minor 修复后，full `swift test`：通过，26 个 XCTest，0 failures。
+  - Phase 4 review Minor 修复后，`swift build`：通过，`Build complete`。
+  - Phase 4 review Minor 修复后，`git diff --check`：通过，无 whitespace error 输出。
+  - Phase 4 review Minor 修复后，`LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - Phase 4 review Minor 修复后，`rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
