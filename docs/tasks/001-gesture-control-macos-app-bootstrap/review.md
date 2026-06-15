@@ -73,6 +73,14 @@
 - 2026-06-16 Phase 9 spec review gate：reviewer 未发现 Critical / Important / Minor，确认 staged diff 符合冻结计划 Phase 9 范围，未提前装配 AppDelegate、HUD 或 menu bar。
 - 2026-06-16 Phase 9 code-quality review gate 初审：未发现 Critical / Important；发现 1 个 Minor，指出 ControlPanel / PermissionPanel button target-action 点击路径缺少自动化测试。已补充 Enable/Pause 和 Recheck 的真实 AppKit button `performClick` 测试，focused test 从 2 个扩展到 4 个。
 - 2026-06-16 Phase 9 code-quality re-review gate：reviewer 确认上一轮 Minor 已关闭，未发现新的 Critical / Important / Minor；Phase 9 从 code-quality 角度批准 checkpoint commit。
+- 2026-06-16 Phase 10 实现发现：`HUDWindowController` 当前已包含 `NSWindowDelegate.windowDidMove` 自动持久化，且有 isolated `UserDefaults` 自动化测试覆盖；这补强了冻结计划只要求人工拖动验证的测试缺口。
+- 2026-06-16 Phase 10 实现发现：`MenuBarController` 的 `statusItem` 和 `installedMenuTitles` 为 internal，目的是让 `@testable` 测试读取实际 `NSMenu` 结构并通过 `NSApp.sendAction` 验证 target-action；这不是 public API。
+- 2026-06-16 Phase 10 运行态发现：`./script/build_and_run.sh --verify` 能确认 `WalkFlowMac` 进程存在；`osascript` / `System Events` 可见进程名，但读取窗口列表和 window count 得到空/0，不能作为主窗口或 HUD 视觉验收证据。HUD 拖动后恢复的真实人工验收未在本阶段自动化中完成，当前由 `windowDidMove` 持久化测试覆盖逻辑层。
+- 2026-06-16 Phase 10 spec review gate 初审：未发现 Critical；发现 2 个 Important。第一，冻结计划要求 HUD 拖动、退出、重启、恢复位置并记录结果，初审时只记录了未完成。第二，冻结计划 TDD matrix 要求 HUD pin-state 证明，初始 `HUDWindowControllerTests` 缺少 panel state 自动化覆盖。
+- 2026-06-16 Phase 10 code-quality review gate 初审：未发现 Critical；发现 3 个 Important。第一，`HUDView` 顶部箭头点位画到 bounds 外，可能被裁剪。第二，`HUDWindowController.restoredOrigin` 使用 `intersects`，会接受几乎完全在屏幕外的保存位置。第三，`MenuBarController` 的 `Enable` / `Pause` 是单向命令，不是可恢复硬开关。
+- 2026-06-16 Phase 10 review 修复：已补充 HUD pin-state 测试、HUD arrow bounds 测试、部分越界保存位置测试和菜单 toggle 测试；实现上将 HUD 箭头完整绘制在 view bounds 内，`restoredOrigin` 改为要求 panel 完整包含于任一 visible frame，`Enable` / `Pause` 菜单项改成基于 `AppController.state` 的 toggle，并在菜单打开/点击后同步 checkmark state。
+- 2026-06-16 Phase 10 运行态恢复验收：Computer Use 无法绑定该临时 app window，直接坐标 drag 也因 `noWindowsAvailable` 失败；CoreGraphics 能看到 `WalkFlow-Mac` 的主窗口和 HUD panel。已通过写入真实 app defaults `hud.savedOriginX=1000`、`hud.savedOriginY=650` 后重启 app，确认 HUD CGWindow bounds 为 `X=1000 Y=196 W=160 H=110`。在当前主屏 frame `1470x956` 下，该 top-left Y 与 AppKit origin `650` 和 HUD height `110` 换算一致。随后恢复原保存位置 `1290,789` 并重启，确认 HUD bounds 回到 `X=1290 Y=57 W=160 H=110`。这证明真实 app 启动恢复保存位置；实际手动鼠标拖动在当前自动化环境未完成。
+- 2026-06-16 Phase 10 re-review gate：spec reviewer 确认上一轮 2 个 Important 已关闭，当前恢复证据链覆盖 `windowDidMove` 保存和真实 app 重启恢复，真实鼠标拖动留到后续 smoke/E2E 残余验证项；code-quality reviewer 确认上一轮 3 个 Important 已关闭，未发现新的 Critical / Important / Minor。Phase 10 从 spec 和 code-quality 角度批准 checkpoint commit。
 - 设计规格自审发现并修正了三类可执行性歧义：`Vision` 达标标准、`MediaPipe` 进入门槛、第一版性能门槛。
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
@@ -250,6 +258,31 @@
   - Phase 9 `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
   - Phase 9 `rg -n "SwiftUI" Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
   - Phase 9 并行验证说明：一次 `swift test` 与 `swift build` 并行触发 SwiftPM `.build` 互斥等待，输出 `Another instance of SwiftPM is already running...` 后正常完成；该输出是 SwiftPM build directory lock 等待，不是测试或构建失败。
+- 2026-06-16 Phase 10 TDD 和验证：
+  - `swift test --filter HUDWindowControllerTests` RED：失败原因符合预期，`HUDWindowController` 不存在。
+  - 新增 HUD placeholder/view/window controller 后，`swift test --filter HUDWindowControllerTests`：通过，3 个 XCTest，0 failures。
+  - HUD 后 `swift test`：通过，63 个 XCTest，0 failures。
+  - HUD 后 `swift build`：通过，`Build complete`。
+  - `swift test --filter MenuBarControllerTests` RED：失败原因符合预期，`MenuBarController` 不存在；测试辅助函数中的 optional `Selector` unwrap 在 GREEN 前修正。
+  - 新增 menu bar controller 和 AppDelegate wiring 后，`swift test --filter MenuBarControllerTests`：通过，3 个 XCTest，0 failures。
+  - Phase 10 full `swift test`：通过，66 个 XCTest，0 failures。
+  - Phase 10 `swift build`：通过，`Build complete`。
+  - Phase 10 `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - Phase 10 `git diff --check`：通过，无 whitespace error 输出。
+  - Phase 10 `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - Phase 10 `rg -n "SwiftUI" Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
+  - Phase 10 run state probe：`pgrep -x WalkFlowMac` 输出进程 ID；`osascript -e 'tell application "System Events" to get name of processes whose name is "WalkFlowMac"'` 输出 `WalkFlowMac`；`System Events` 读取 process window count 输出 `0`，未形成窗口视觉验收证据。
+  - Phase 10 review 修复 RED：新增 `HUDViewTests` 后，`swift test --filter HUDViewTests` 因 `HUDView.arrowPoints(in:)` / `HUDView.panelRect(in:)` 不存在而失败；新增部分越界保存位置测试后，`swift test --filter HUDWindowControllerTests` 得到预期失败，实际 returned origin 为 `(1439,899)` 而不是 fallback `(1260,770)`；新增菜单 toggle tests 后，`swift test --filter MenuBarControllerTests` 得到预期失败，`Enable` 二次点击和 `Pause` 二次点击均无法恢复状态。
+  - Phase 10 review 修复后，`swift test --filter HUDViewTests`：通过，2 个 XCTest，0 failures。
+  - Phase 10 review 修复后，`swift test --filter HUDWindowControllerTests`：通过，5 个 XCTest，0 failures。
+  - Phase 10 review 修复后，`swift test --filter MenuBarControllerTests`：通过，5 个 XCTest，0 failures。
+  - Phase 10 review 修复后，full `swift test`：通过，72 个 XCTest，0 failures。
+  - Phase 10 review 修复后，`swift build`：通过，`Build complete`。
+  - Phase 10 review 修复后，`./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - Phase 10 review 修复后，`git diff --check`：通过，无 whitespace error 输出。
+  - Phase 10 review 修复后，`LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - Phase 10 review 修复后，`rg -n "SwiftUI" Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
+  - Phase 10 saved-position restore probe：写入 `defaults write com.m1ngwym.walkflowmac hud.savedOriginX -float 1000` 和 `hud.savedOriginY -float 650` 后执行 `./script/build_and_run.sh --verify`，随后 CoreGraphics window list 显示 HUD `X=1000 Y=196 W=160 H=110`；恢复 `hud.savedOriginX=1290`、`hud.savedOriginY=789` 并重启后，HUD 回到 `X=1290 Y=57 W=160 H=110`。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。

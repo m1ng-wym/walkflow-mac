@@ -1,25 +1,29 @@
 import AppKit
+import WalkFlowCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var window: NSWindow?
+    private let appController = AppController()
+    private var mainWindowController: MainWindowController?
+    private var hudWindowController: HUDWindowController?
+    private var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
-        contentView.wantsLayer = true
-        contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        let main = MainWindowController(appController: appController)
+        main.showWindow(nil)
+        main.window?.makeKeyAndOrderFront(nil)
+        mainWindowController = main
 
-        let window = NSWindow(
-            contentRect: contentView.frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "WalkFlow-Mac"
-        window.contentView = contentView
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+        let hud = HUDWindowController(settingsStore: SettingsStore())
+        hud.show()
+        hudWindowController = hud
+        appController.hudPresenter = hud
+
+        menuBarController = MenuBarController(appController: appController, mainWindowController: main, hudWindowController: hud)
+
+        appController.refreshPermissions()
+        appController.configureCameraIfPermitted()
+        appController.startRecognition()
         NSApp.activate(ignoringOtherApps: true)
-        self.window = window
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

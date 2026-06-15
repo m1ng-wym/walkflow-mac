@@ -218,9 +218,32 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 已执行 `swift test --filter MainWindowControllerTests`、`swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查。
 - 当前 Phase 9 基础实现未装配 `AppDelegate`、HUD 或 menu bar，符合冻结计划要求；完整启动装配后移到 Phase 10。
 
+### 2026-06-16 Phase 10 HUD Floating Panel And Menu Bar 进度
+
+- 已完成 Task 10.1 HUD floating panel TDD：
+  - RED：新增 `HUDWindowControllerTests` 后，focused test 因 `HUDWindowController` 不存在失败。
+  - GREEN：新增 `LottieStatusIconView` placeholder、`HUDView`、`HUDWindowController`，实现右上角 fallback origin、offscreen saved origin fallback、浮动 `NSPanel`、HUD presenter update 和拖动后位置保存。
+  - 为满足项目 TDD gate，额外补充 `testWindowDidMovePersistsHUDOrigin`，用 isolated `UserDefaults` suite 验证 `windowDidMove` 写回 `SettingsStore`。
+- 已完成 Task 10.2 menu bar controller TDD：
+  - RED：新增 `MenuBarControllerTests` 后，focused test 因 `MenuBarController` 不存在失败。
+  - GREEN：新增 `MenuBarController`，提供 `Enable`、`Pause`、`Show HUD`、`Open Window`、`Settings`、`Quit` 菜单项，菜单栏按钮使用手势占位图标；测试覆盖静态菜单标题、实际安装菜单项和 `Enable` / `Pause` target-action。
+  - 已替换 Phase 1 临时 `AppDelegate` 窗口，装配 `AppController`、`MainWindowController`、`HUDWindowController` 和 `MenuBarController`，启动时刷新权限、按权限配置 camera 并启动识别。
+- 已执行 `swift test --filter HUDWindowControllerTests`、`swift test --filter MenuBarControllerTests`、`swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查。
+- Phase 10 review gate 初审发现 5 个 Important：HUD 拖动恢复验收未完成、HUD panel pin-state 自动化不足、HUD 顶部箭头越界可能被裁剪、saved origin 只要求 intersects 会接受部分越界位置、Enable/Pause 菜单项是单向命令而不是硬开关 toggle。
+- 已按 TDD 补充并修复：
+  - `HUDWindowControllerTests.testPanelIsConfiguredAsPinnedFloatingHUD` 覆盖 floating/pinned panel state。
+  - `HUDViewTests` 覆盖箭头点位在 view bounds 内、panel body 为箭头预留空间。
+  - `HUDWindowControllerTests.testSavedOriginIsRejectedWhenPanelWouldBePartiallyOffScreen` 覆盖部分越界保存位置 fallback。
+  - `MenuBarControllerTests.testEnableMenuItemTogglesHardSwitch` 和 `testPauseMenuItemTogglesPauseAndResume` 覆盖菜单栏硬开关可关闭/恢复。
+- 运行态验收更新：
+  - `System Events` 对临时 SwiftPM app 的 AX window count 返回 0，Computer Use 也无法绑定窗口，因此没有使用这些路径作为视觉证据。
+  - CoreGraphics 能看到主窗口和 HUD panel；通过写入 `hud.savedOriginX=1000`、`hud.savedOriginY=650` 后重启，CGWindow 检查 HUD bounds 为 `X=1000 Y=196 W=160 H=110`，与当前 956px 高屏幕坐标换算一致，证明保存位置会在真实 app 启动时恢复。
+  - 验证后已恢复原先 HUD 保存位置 `X=1290`、`Y=789` 并重启，CGWindow 检查 HUD bounds 回到 `X=1290 Y=57 W=160 H=110`。
+- Phase 10 re-review 已通过：spec reviewer 确认 HUD pin-state 和保存位置恢复验收证据足以关闭 Important；code-quality reviewer 确认 HUD 箭头、保存位置部分越界和菜单硬开关 toggle 的 Important 均已关闭，未发现新的 Critical / Important / Minor。
+
 ## 下一步
 
-完成 Phase 9 requesting-code-review gate；如无 Critical/Important 未修复问题，则创建 Phase 9 checkpoint commit，并继续进入 Phase 10 HUD Floating Panel And Menu Bar。
+创建 Phase 10 checkpoint commit，并继续进入 Phase 11 Lottie And useAnimations Assets。
 
 ## 阻塞
 
