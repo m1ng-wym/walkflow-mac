@@ -206,9 +206,21 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - Important 修复后已重新执行 `swift test --filter AppControllerTests`、`swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查；正在等待 Phase 8 re-review。
 - Phase 8 re-review 已通过：spec reviewer 确认上一轮 Important 已关闭；code-quality reviewer 确认 4 个 Important 均已关闭，未发现新的 Critical / Important / Minor，并批准 Phase 8 从 code-quality 角度进入 checkpoint commit。
 
+### 2026-06-16 Phase 9 Main Window AppKit UI 进度
+
+- 已进入 Task 9.1 主窗口 AppKit UI。
+- 已完成 `MainWindowControllerTests` TDD：
+  - RED：新增主窗口测试后，focused test 因 `MainWindowController` / `PreviewContainerView` 等 AppKit UI 类型不存在而失败；测试闭包的类型推断问题已在 RED 阶段修正为显式 `constraint` 参数，不改变验收目标。
+  - GREEN：新增 `MainWindowController`、`ControlPanelView`、`PermissionPanelView`、`PreviewContainerView`，实现左右 split layout、左侧 220 pt 配置/权限区域、右侧摄像头预览容器。
+  - 在 plan 指定的主窗口布局测试基础上，补充 `testPreviewPaneContainsCameraPreviewView`，证明右侧 preview pane 确实持有 `CameraPreviewView`。
+- Phase 9 code-quality review 提出 1 个 Minor：缺少 `ControlPanelView` / `PermissionPanelView` 按钮 target-action 点击路径测试。已补充 `testControlPanelButtonsDriveAppControllerState` 和 `testPermissionPanelRecheckRefreshesPermissionSnapshot`，并修正测试 helper 以递归遍历 `NSStackView.arrangedSubviews`。
+- Phase 9 code-quality re-review 已通过：reviewer 确认上一轮 Minor 已关闭，未发现新的 Critical / Important / Minor。
+- 已执行 `swift test --filter MainWindowControllerTests`、`swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查。
+- 当前 Phase 9 基础实现未装配 `AppDelegate`、HUD 或 menu bar，符合冻结计划要求；完整启动装配后移到 Phase 10。
+
 ## 下一步
 
-完成 Phase 8 code review gate 和 checkpoint commit；随后继续进入 Phase 9 Main Window AppKit UI。
+完成 Phase 9 requesting-code-review gate；如无 Critical/Important 未修复问题，则创建 Phase 9 checkpoint commit，并继续进入 Phase 10 HUD Floating Panel And Menu Bar。
 
 ## 阻塞
 

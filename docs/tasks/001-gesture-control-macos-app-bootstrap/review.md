@@ -68,6 +68,11 @@
 - 2026-06-16 Phase 8 code-quality review gate 初审：未发现 Critical；发现 4 个 Important。第一，disable/pause/stop 未 reset `stateMachine`，可能遗留已 ready / continuous-scroll 状态并在恢复后误触发。第二，camera frame callback 与 AppKit/main-thread 操作之间共享 mutable state 未同步。第三，permission-blocked observation path 缺测试。第四，缺允许状态下正向 gesture action 到 `eventOutput.execute` 的测试。
 - 2026-06-16 Phase 8 review 修复：已补 permission-blocked observation 不执行/不预热测试、permitted armed gesture 正向 scroll action 测试，以及 disable/pause/stop 清空已 ready 状态机的 lifecycle tests。实现上新增 `NSRecursiveLock` 保护 `state` / `stateMachine` / event output 边界，并在 disable/pause/stop 时 reset state machine。Phase 8 正在等待 re-review。
 - 2026-06-16 Phase 8 re-review gate：spec reviewer 确认上一轮 Important 已关闭；code-quality reviewer 确认 4 个 Important 均已关闭，未发现新的 Critical / Important / Minor，并批准 Phase 8 从 code-quality 角度提交。真实摄像头 frame delivery、右侧 Command 人工验证、AppDelegate/main window 装配仍按后续阶段处理，不作为 Phase 8 阻塞。
+- 2026-06-16 Phase 9 实现发现：主窗口当前为纯 AppKit `NSWindowController` + `NSSplitView`，左侧控制/权限区域固定 220 pt，右侧通过 `PreviewContainerView` 承载 `CameraPreviewView`。当前阶段不连接 `AppDelegate`、HUD floating panel 或 menu bar，避免提前依赖 Phase 10 类型。
+- 2026-06-16 Phase 9 TDD 调整：冻结计划只要求 split layout 测试；实际在 GREEN 前补充了 `testPreviewPaneContainsCameraPreviewView`，防止右侧 preview pane 只存在容器但未装入摄像头预览。该补充不扩大生产行为，只加强 plan 里“右侧摄像头预览”的可验证性。
+- 2026-06-16 Phase 9 spec review gate：reviewer 未发现 Critical / Important / Minor，确认 staged diff 符合冻结计划 Phase 9 范围，未提前装配 AppDelegate、HUD 或 menu bar。
+- 2026-06-16 Phase 9 code-quality review gate 初审：未发现 Critical / Important；发现 1 个 Minor，指出 ControlPanel / PermissionPanel button target-action 点击路径缺少自动化测试。已补充 Enable/Pause 和 Recheck 的真实 AppKit button `performClick` 测试，focused test 从 2 个扩展到 4 个。
+- 2026-06-16 Phase 9 code-quality re-review gate：reviewer 确认上一轮 Minor 已关闭，未发现新的 Critical / Important / Minor；Phase 9 从 code-quality 角度批准 checkpoint commit。
 - 设计规格自审发现并修正了三类可执行性歧义：`Vision` 达标标准、`MediaPipe` 进入门槛、第一版性能门槛。
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
@@ -233,6 +238,18 @@
   - Phase 8 review 修复后，`git diff --check`：通过，无 whitespace error 输出。
   - Phase 8 review 修复后，`LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
   - Phase 8 review 修复后，`rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
+- 2026-06-16 Phase 9 TDD 和验证：
+  - `swift test --filter MainWindowControllerTests` RED：本阶段开始时因 `MainWindowController`、`PreviewContainerView` 等 AppKit UI 类型不存在失败；这证明测试覆盖目标在生产代码存在前不可通过。
+  - 新增主窗口 AppKit UI 后，`swift test --filter MainWindowControllerTests`：通过，2 个 XCTest，0 failures。
+  - Phase 9 code-quality review Minor 修复前，新增 button click tests 的首次 `swift test --filter MainWindowControllerTests` 失败：测试 helper 只递归 `subviews`，未遍历 `NSStackView.arrangedSubviews`，导致无法找到 `Enable` / `Pause` / `Recheck` 按钮；修复 helper 后同一 focused test 通过。
+  - Phase 9 code-quality review Minor 修复后，`swift test --filter MainWindowControllerTests`：通过，4 个 XCTest，0 failures。
+  - Phase 9 code-quality review Minor 修复后，full `swift test`：通过，60 个 XCTest，0 failures。
+  - Phase 9 `swift build`：通过，`Build complete`。
+  - Phase 9 `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - Phase 9 `git diff --check`：通过，无 whitespace error 输出。
+  - Phase 9 `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - Phase 9 `rg -n "SwiftUI" Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
+  - Phase 9 并行验证说明：一次 `swift test` 与 `swift build` 并行触发 SwiftPM `.build` 互斥等待，输出 `Another instance of SwiftPM is already running...` 后正常完成；该输出是 SwiftPM build directory lock 等待，不是测试或构建失败。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
