@@ -31,6 +31,12 @@
 ## Review 发现
 
 - 当前暂无代码 review 发现。
+- 2026-06-15 Phase 0 执行发现：本轮已启动并行 subagent 进行只读复核，但 subagent 返回账户额度限制错误，未产生复核结论。该问题属于外部执行环境限制，不改变代码实现主线；后续阶段如额度恢复，应再次发起并行 review 或在阶段 requesting-code-review 中补齐。
+- 2026-06-15 Phase 1 阻塞发现：当前 SwiftPM/Xcode 16.2 工具链禁止将 `Info.plist` 作为 target 顶层 resource 处理。`plan.md` 中 `WalkFlowMacApp` manifest 使用 `.process("Resources")`，同时 Phase 1 要求创建 `Sources/WalkFlowMacApp/Resources/Info.plist`，导致 `swift test` / `swift build` 在资源规划阶段失败。建议最小修复：保留源路径 `Sources/WalkFlowMacApp/Resources/Info.plist` 作为 run script staging `.app` 的输入，但不要让 SwiftPM 将其作为 target resource 处理；可在 `Package.swift` 中移除该 target 的 `resources: [.process("Resources")]`，后续如有非 plist 资源再单独恢复 resource processing。
+- 2026-06-15 Phase 1 阻塞解除：用户已明确批准只改 `Package.swift`，移除 `WalkFlowMacApp` target 的 `.process("Resources")`，保留 `Info.plist` 给 run script 使用。实际修复为移除 `resources` 参数，并添加 `exclude: ["Resources/Info.plist"]`，以消除 SwiftPM unhandled file warning。
+- 2026-06-15 Phase 1 run script 发现：`./script/build_and_run.sh --verify` 首次失败不是 AppKit window 问题，而是 dyld 启动失败：`Library not loaded: @rpath/Lottie.framework/Versions/A/Lottie`。原因是 SwiftPM executable 链接了 Lottie binary framework，但 run script 初版只复制了 executable，没有复制 `Lottie.framework`。已修复为使用 `swift build --show-bin-path` 定位 build products 目录，并把其中 `.framework` 复制进 `.app/Contents/MacOS/`，匹配 dyld 实际搜索路径。
+- 2026-06-15 Phase 1 subagent 只读复核完成：结论认为 `Package.swift` 最小修复合理，未发现 `plan.md` dirty diff、SwiftUI 引入或 local-only artifact 跟踪问题；提醒后续 Phase 11 添加 Lottie JSON 时不要恢复 broad `.process("Resources")`，应只处理非 plist 资源。
+- 2026-06-15 Phase 1 code review gate：reviewer 未发现 Critical；发现 1 个 Important，指出“跳过的检查”仍写着未运行 build/test/lint，已修正。Minor 发现 `Info.plist` 直接复制时 `$(DEVELOPMENT_LANGUAGE)` 会保留字面量，已改为 `en`；签名描述已改为更准确的“本地 debug 可启动，尚非完整签名 bundle”。`Lottie.framework` 当前复制到 `Contents/MacOS/` 是为了匹配 SwiftPM executable 当前 `@loader_path` 搜索路径，后续 packaging/signing 阶段仍需评估是否迁移到标准 `Contents/Frameworks` 并同步 rpath/signing。
 - 设计规格自审发现并修正了三类可执行性歧义：`Vision` 达标标准、`MediaPipe` 进入门槛、第一版性能门槛。
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
@@ -50,7 +56,39 @@
 
 ## 验证命令和结果
 
-- 尚未进入实现阶段，暂无构建、测试或运行验证。
+- 2026-06-15 Phase 0 preflight 已执行：
+  - `pwd`：输出 `/Users/Zhuanz/Documents/Magic-tool`。
+  - `git status --short --branch`：输出 `## main...origin/main [ahead 2]`。
+  - `find . -name '*.xcworkspace' -o -name '*.xcodeproj' -o -name 'Package.swift'`：无输出，执行前不存在 app project/package。
+  - `git status --short`：无输出。
+  - `git diff --stat`：无输出。
+  - `git check-ignore -v AGENTS.md .superpowers/ docs/superpowers/ .worktrees/ worktrees/`：五个 local-only 路径均由 `.gitignore` 命中。
+  - `git ls-files AGENTS.md .superpowers docs/superpowers`：无输出。
+  - `git rev-parse HEAD`：已记录为 `WALKFLOW_IMPL_BASE_SHA=c779ffd6fb158d6ef14874a5c504e5ebd2dc28c2`。
+- 已读取 Build macOS Apps `build-run-debug/references/run-button-bootstrap.md`，确认 SwiftPM GUI app 应 stage 为本地 `.app` bundle 并通过 `/usr/bin/open -n` 启动。
+- 2026-06-15 Phase 1 TDD 已执行：
+  - 首次 `swift test --filter GestureStateMachineTests/testGestureKindEquatableSmoke` 先触发 Lottie binary artifact 下载，随后由于 SwiftPM target 目录/空 target scaffold 不完整，未到业务 RED。
+  - 已补充最小 target scaffold 后，`swift test --filter GestureStateMachineTests/testGestureKindEquatableSmoke` 得到预期业务 RED：`cannot find 'GestureKind' in scope`。
+  - 写入 `GestureKind` 最小 enum 后，再次执行 `swift test --filter GestureStateMachineTests/testGestureKindEquatableSmoke` 通过：1 个 focused test，0 failures。
+  - 执行 `swift test`：失败，错误为 `resource 'Resources/Info.plist' in target 'WalkFlowMacApp' is forbidden; Info.plist is not supported as a top-level resource file in the resources bundle`。
+  - 执行 `swift build`：失败，同一 `Info.plist` resource 错误。
+- 2026-06-15 用户批准最小 `Package.swift` 修复后重新验证：
+  - `swift test`：通过，`GestureStateMachineTests` 和 `WalkFlowMacAppBootstrapTests` 共 2 个 XCTest，0 failures。
+  - `swift build`：通过，`Build complete`，未再出现 `Info.plist` resource warning。
+  - `./script/build_and_run.sh --verify` 首次失败；`bash -x ./script/build_and_run.sh --verify` 定位失败边界为 `open -n` 后 `pgrep -x WalkFlowMac` 找不到进程。
+  - 直接运行 `dist/WalkFlow-Mac.app/Contents/MacOS/WalkFlowMac` 得到 dyld 错误：`Library not loaded: @rpath/Lottie.framework/Versions/A/Lottie`，确认缺失 staged framework。
+  - 修复 run script framework staging 后，`./script/build_and_run.sh --verify` 通过，输出 `Verified WalkFlowMac is running.`。
+  - `plutil -p "dist/WalkFlow-Mac.app/Contents/Info.plist"`：确认包含 `CFBundleExecutable=WalkFlowMac`、`CFBundleIdentifier=com.m1ngwym.walkflowmac`、`CFBundleName=WalkFlow-Mac`、`CFBundlePackageType=APPL`、`LSMinimumSystemVersion=14.0`、`NSPrincipalClass=NSApplication` 和 `NSCameraUsageDescription`。
+  - `codesign -dvvv --entitlements :- "dist/WalkFlow-Mac.app" 2>&1 | sed -n '1,80p'`：确认本地 debug bundle 可启动，主 executable 为 ad hoc 签名，`TeamIdentifier=not set`，entitlements 包含 `com.apple.security.get-task-allow=true`；同时 `Info.plist=not bound`、`Sealed Resources=none`，这不是完整分发签名状态，后续 packaging/signing 阶段仍需处理。
+- 2026-06-15 Phase 1 review 修复后复跑：
+  - `swift test`：通过，2 个 XCTest，0 failures。
+  - `swift build`：通过，`Build complete`。
+  - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - `plutil -p "dist/WalkFlow-Mac.app/Contents/Info.plist"`：确认 `CFBundleDevelopmentRegion=en`，并保留 `NSCameraUsageDescription`。
+  - `codesign -dvvv --entitlements :- "dist/WalkFlow-Mac.app" 2>&1 | sed -n '1,100p'`：仍为本地 debug/ad hoc 状态，`Info.plist=not bound`、`Sealed Resources=none` 已明确记录为非完整分发签名。
+  - `rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出。
+  - `git ls-files AGENTS.md .superpowers docs/superpowers`：无输出。
+  - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
@@ -67,7 +105,9 @@
 
 ## 跳过的检查
 
-- 未运行 build、test、lint：仓库尚未定义 App、包管理器或验证命令。
+- Phase 1 已定义 SwiftPM package 和本地 run script，并已执行 `swift test`、`swift build`、`./script/build_and_run.sh --verify`、`plutil`、`codesign` 和 SwiftUI 禁用检查。
+- 未运行 lint：仓库当前未定义独立 lint 命令或格式化工具。
+- 未执行人工 UI smoke：Phase 1 仅要求进程级 launch verify 和 bundle metadata/signing 检查；完整主窗口/HUD/手势人工验收在后续阶段按 `plan.md` 执行。
 
 ## 关键决策
 

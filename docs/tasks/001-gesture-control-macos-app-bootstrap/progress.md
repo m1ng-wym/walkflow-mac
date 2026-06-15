@@ -77,10 +77,37 @@
 
 Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `main`，跟踪 `origin/main`。最新规则下，`AGENTS.md`、`.superpowers/` 和 `docs/superpowers/` 只保留本地，不再由 Git 跟踪。`plan.md` 已完成第二轮高强度加固，后续实现必须按其中的 Superpowers TDD/Subagent/Review gate、Build macOS Apps 能力映射和每阶段自动化/人工验收门槛执行。
 
+### 2026-06-15 Phase 0 执行基线
+
+- 已恢复执行冻结计划 `plan.md`，当前 `plan.md` 仅作为执行合同，不做修改。
+- 已确认当前工作目录：`/Users/Zhuanz/Documents/Magic-tool`。
+- 已确认当前分支状态：`main`，本地相对 `origin/main` ahead 2，未 push。
+- 已确认执行前不存在 `Package.swift`、`.xcodeproj` 或 `.xcworkspace`。
+- 已确认执行前 `git status --short` 和 `git diff --stat` 均为空。
+- 已确认 `AGENTS.md`、`.superpowers/`、`docs/superpowers/`、`.worktrees/`、`worktrees/` 均由 `.gitignore` 忽略。
+- 已确认 `git ls-files AGENTS.md .superpowers docs/superpowers` 无输出，local-only agent artifacts 未被 Git 跟踪。
+- 已确认本轮已读取并采用必需 Superpowers / Build macOS Apps skills；并已读取 Build macOS Apps `run-button-bootstrap.md` 作为本地 run script 参考。
+- 已尝试启动并行 subagent 进行 Phase 0/1 风险复核，但 subagent 因账户额度限制报错，未能完成只读复核；该问题已记录到 `review.md`，当前继续推进主线，后续如额度恢复需再次执行并行 review。
+- 实现基线：`WALKFLOW_IMPL_BASE_SHA=c779ffd6fb158d6ef14874a5c504e5ebd2dc28c2`。
+
+### 2026-06-15 Phase 1 Bootstrap 进度
+
+- 用户已明确确认允许只改 `Package.swift`，移除 `WalkFlowMacApp` target 的 `.process("Resources")`，保留 `Info.plist` 给 run script 使用，并继续执行。
+- 已按批准范围修复 `Package.swift`：移除 `resources: [.process("Resources")]`，并显式 `exclude: ["Resources/Info.plist"]`，避免 SwiftPM 把 App bundle metadata 当 target resource。
+- 已创建 SwiftPM package、`WalkFlowCore` library、`WalkFlowMacApp` executable、`WalkFlowCoreTests` 和 `WalkFlowMacAppTests`。
+- 已完成 `GestureKind` 第一个 TDD 红绿循环：focused test 先因 `GestureKind` 不存在失败，再以最小 enum 实现通过。
+- 已创建 AppKit-only entrypoint：`Sources/WalkFlowMacApp/main.swift` 和 `Sources/WalkFlowMacApp/App/AppDelegate.swift`。
+- 已创建 bundle metadata：`Sources/WalkFlowMacApp/Resources/Info.plist`，包含 `NSCameraUsageDescription`。
+- 已创建 Build macOS Apps run script：`script/build_and_run.sh`，并创建 Codex Run action：`.codex/environments/environment.toml`。
+- 已修复 run script staging：当前 SwiftPM + Lottie binary framework 需要把 `Lottie.framework` 一并复制进 `.app`，否则 dyld 启动失败；脚本现在使用 `swift build --show-bin-path` 获取真实 build products 目录，并复制其中的 `.framework`。
+- 已完成并行 subagent 只读复核：复核结论认为 `Package.swift` 最小修复合理，未发现 `plan.md` dirty diff、SwiftUI 引入或 local-only artifact 跟踪问题；提醒后续 Phase 11 添加 Lottie JSON 时不要恢复 broad `.process("Resources")`。
+- 已完成 Phase 1 code review gate：reviewer 未发现 Critical；发现 1 个 Important 文档陈旧问题，已修正；Minor 中 `Info.plist` development region 字面量问题也已修正为 `en`。
+- 已执行 `swift test`、`swift build`、`./script/build_and_run.sh --verify`、`plutil`、`codesign`、SwiftUI 禁用检查、local-only 跟踪检查和 `plan.md` hash 检查，结果已记录到 `review.md`。
+
 ## 下一步
 
-进入 `plan.md` 的 Phase 0 preflight，随后开始 AppKit-only macOS App bootstrap 实现。
+完成 Phase 1 checkpoint commit；随后继续进入 Phase 2 core domain / settings / reducers。
 
 ## 阻塞
 
-暂无阻塞。
+暂无阻塞。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。
