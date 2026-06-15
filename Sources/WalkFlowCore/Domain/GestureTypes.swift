@@ -9,3 +9,15 @@ public enum GestureKind: Equatable, Sendable {
     case okPinch
     case handLost
 }
+
+public struct GestureObservation: Equatable, Sendable {
+    public var kind: GestureKind
+    public var confidence: Double
+    public var timestamp: TimeInterval
+
+    public init(kind: GestureKind, confidence: Double, timestamp: TimeInterval) {
+        self.kind = kind
+        self.confidence = confidence
+        self.timestamp = timestamp
+    }
+}

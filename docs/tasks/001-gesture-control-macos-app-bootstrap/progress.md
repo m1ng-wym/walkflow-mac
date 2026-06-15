@@ -104,9 +104,20 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 已完成 Phase 1 code review gate：reviewer 未发现 Critical；发现 1 个 Important 文档陈旧问题，已修正；Minor 中 `Info.plist` development region 字面量问题也已修正为 `en`。
 - 已执行 `swift test`、`swift build`、`./script/build_and_run.sh --verify`、`plutil`、`codesign`、SwiftUI 禁用检查、local-only 跟踪检查和 `plan.md` hash 检查，结果已记录到 `review.md`。
 
+### 2026-06-15 Phase 2 Core Domain / Settings 进度
+
+- 已完成 Task 2.1 domain types TDD：
+  - RED：`DomainTypesTests` 因 `AppSettings`、`PermissionSnapshot`、`HUDPresentation` 等不存在失败。
+  - GREEN：新增 `HandPoseSnapshot`、`AppSettings`、`HUDTypes`、`PermissionTypes`、`EventTypes`，并扩展 `GestureObservation`。
+- 已完成 Task 2.2 settings persistence TDD：
+  - RED：`SettingsStoreTests` 因 `SettingsStore` 不存在失败。
+  - GREEN：新增 `SettingsStore`，支持默认值加载和 HUD 位置持久化 round trip。
+- 已执行 Phase 2 focused tests、`swift test` 和 `swift build`，结果写入 `review.md`。
+- 已完成 Phase 2 code review gate：reviewer 未发现 Critical/Important；指出验证证据可更完整，已补跑 `swift test --filter DomainTypesTests` 和 `swift test --filter WalkFlowCoreTests` 并记录。
+
 ## 下一步
 
-完成 Phase 1 checkpoint commit；随后继续进入 Phase 2 core domain / settings / reducers。
+完成 Phase 2 code review gate 和 checkpoint commit；随后继续进入 Phase 3 gesture state machine。
 
 ## 阻塞
 

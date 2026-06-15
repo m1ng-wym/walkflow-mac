@@ -37,6 +37,8 @@
 - 2026-06-15 Phase 1 run script 发现：`./script/build_and_run.sh --verify` 首次失败不是 AppKit window 问题，而是 dyld 启动失败：`Library not loaded: @rpath/Lottie.framework/Versions/A/Lottie`。原因是 SwiftPM executable 链接了 Lottie binary framework，但 run script 初版只复制了 executable，没有复制 `Lottie.framework`。已修复为使用 `swift build --show-bin-path` 定位 build products 目录，并把其中 `.framework` 复制进 `.app/Contents/MacOS/`，匹配 dyld 实际搜索路径。
 - 2026-06-15 Phase 1 subagent 只读复核完成：结论认为 `Package.swift` 最小修复合理，未发现 `plan.md` dirty diff、SwiftUI 引入或 local-only artifact 跟踪问题；提醒后续 Phase 11 添加 Lottie JSON 时不要恢复 broad `.process("Resources")`，应只处理非 plist 资源。
 - 2026-06-15 Phase 1 code review gate：reviewer 未发现 Critical；发现 1 个 Important，指出“跳过的检查”仍写着未运行 build/test/lint，已修正。Minor 发现 `Info.plist` 直接复制时 `$(DEVELOPMENT_LANGUAGE)` 会保留字面量，已改为 `en`；签名描述已改为更准确的“本地 debug 可启动，尚非完整签名 bundle”。`Lottie.framework` 当前复制到 `Contents/MacOS/` 是为了匹配 SwiftPM executable 当前 `@loader_path` 搜索路径，后续 packaging/signing 阶段仍需评估是否迁移到标准 `Contents/Frameworks` 并同步 rpath/signing。
+- 2026-06-15 Phase 2 实现发现：当前 core domain/settings 仍是纯 Swift value types 和 `UserDefaults` 持久化，不触碰 AppKit UI、摄像头、权限请求、系统事件注入或外部服务。
+- 2026-06-15 Phase 2 code review gate：reviewer 未发现 Critical/Important。Minor 指出验证证据可更完整，已补跑并记录 `swift test --filter DomainTypesTests` focused GREEN 和阶段矩阵命令 `swift test --filter WalkFlowCoreTests`。
 - 设计规格自审发现并修正了三类可执行性歧义：`Vision` 达标标准、`MediaPipe` 进入门槛、第一版性能门槛。
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
@@ -89,6 +91,15 @@
   - `rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出。
   - `git ls-files AGENTS.md .superpowers docs/superpowers`：无输出。
   - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+- 2026-06-15 Phase 2 TDD 和验证：
+  - `swift test --filter DomainTypesTests` RED：失败原因符合预期，`AppSettings`、`PermissionSnapshot`、`HUDPresentation` 等类型不存在。
+  - 新增 domain types 后执行 `swift test`：通过，5 个 XCTest，0 failures。
+  - `swift test --filter SettingsStoreTests` RED：失败原因符合预期，`SettingsStore` 不存在。
+  - 新增 `SettingsStore` 后执行 `swift test --filter SettingsStoreTests`：通过，2 个 XCTest，0 failures。
+  - `swift test --filter DomainTypesTests` focused GREEN：通过，3 个 XCTest，0 failures。
+  - `swift test --filter WalkFlowCoreTests`：通过，6 个 WalkFlowCore XCTest，0 failures。
+  - Phase 2 full `swift test`：通过，7 个 XCTest，0 failures。
+  - `swift build`：通过，`Build complete`。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
@@ -107,7 +118,7 @@
 
 - Phase 1 已定义 SwiftPM package 和本地 run script，并已执行 `swift test`、`swift build`、`./script/build_and_run.sh --verify`、`plutil`、`codesign` 和 SwiftUI 禁用检查。
 - 未运行 lint：仓库当前未定义独立 lint 命令或格式化工具。
-- 未执行人工 UI smoke：Phase 1 仅要求进程级 launch verify 和 bundle metadata/signing 检查；完整主窗口/HUD/手势人工验收在后续阶段按 `plan.md` 执行。
+- 未执行 Phase 2 人工 UI smoke：Phase 2 仅涉及 core domain/settings 逻辑；完整主窗口/HUD/手势人工验收在后续阶段按 `plan.md` 执行。
 
 ## 关键决策
 
