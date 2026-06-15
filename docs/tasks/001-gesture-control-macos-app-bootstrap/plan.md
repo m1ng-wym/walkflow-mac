@@ -24,6 +24,7 @@
 - Do not push or deploy without asking the user first.
 - Do not run destructive git operations such as `git reset --hard`, `git clean`, force-push, force-overwrite, or rollback of unconfirmed work. If the user explicitly asks for one, stop and reconfirm exact scope before taking action.
 - Prefer `rg`, `swift test`, `swift build`, and `./script/build_and_run.sh` as the working commands.
+- The app test target must remain automated. If the local SwiftPM/Xcode toolchain cannot import an executable target from `WalkFlowMacAppTests`, do not remove tests or replace them with manual verification. Instead, split testable AppKit/controllers/services into a `WalkFlowMacAppSupport` library target, keep `WalkFlowMacApp` as a thin executable entrypoint, and update this plan, `progress.md`, and `review.md` before continuing.
 
 ## Mandatory Superpowers Workflow
 
@@ -100,6 +101,28 @@ The final closure must include:
 | `view-refactor` | Not directly applicable because SwiftUI is banned. Reuse the file-responsibility checklist during AppKit review: split oversized controllers/views, keep models/stores/services separate, and keep app entrypoint minimal. | review gates |
 | `liquid-glass` | Not directly applicable because it is SwiftUI/Liquid Glass specific. Do not add SwiftUI or Liquid Glass APIs. Use only the caution against custom chrome that harms native macOS usability. | visual review only |
 
+## TDD Coverage Matrix
+
+This matrix is binding. If a phase has production code but no listed RED proof, the implementer must add the missing test before writing code.
+
+| Phase | First RED proof | GREEN proof | Notes |
+| --- | --- | --- | --- |
+| 1 Bootstrap | `GestureStateMachineTests/testGestureKindEquatableSmoke` fails before `GestureKind` exists | focused test passes, then `swift test` and `swift build` pass | Build/run script is configuration; verify with `./script/build_and_run.sh --verify`. |
+| 2 Domain/settings | `DomainTypesTests` or existing compile tests fail before domain types exist; `SettingsStoreTests` fail before store exists | `swift test --filter WalkFlowCoreTests` and `swift test` pass | Add domain tests if a later implementation changes defaults, permission semantics, or event types. |
+| 3 State machine | `GestureStateMachineTests` fail for ready window, timeout, fist, hand lost, short/long scroll, OK cooldown, and voice toggle | focused tests and full suite pass | This is the main safety net for accidental system actions. |
+| 4 Classifier | `GestureClassifierTests` fail on synthetic hand snapshots | focused tests and full suite pass | Must include left/right hand and low-confidence edge cases. |
+| 5 HUD reducer | `HUDStateReducerTests` fail on disabled, permission, standby, ready, scroll, command, hand lost, stop | focused tests and full suite pass | Proves one-icon-only and status-dot priority. |
+| 6 Permissions/events | `SystemPermissionServiceTests` fail with fake providers; `CGEventOutputTests` fail with dry-run event poster | app test target passes plus build passes | Tests must not post real scroll/key events. Manual right-Command verification remains required. |
+| 7 Camera/Vision | `CameraPreviewViewTests` fail before preview layer exists; `VisionHandPoseProviderTests` fail before joint mapping exists | focused tests, full suite, and build pass; preview attach path is smoke-tested later | Do not store frames or recordings in repo. |
+| 8 App orchestration | `AppControllerTests` fail with fake camera, fake vision, fake event output, fake HUD presenter | app test target passes plus build passes | Must prove disabled/paused/permission-blocked states do not post events. |
+| 9 Main window UI | `MainWindowControllerTests` fail before window/controller exists | focused tests, full suite, and build pass | Launch smoke is deferred to Phase 10 after AppDelegate can wire HUD/menu without compile gaps. |
+| 10 HUD/menu | `HUDWindowControllerTests` fail for saved-position fallback and pin state; `MenuBarControllerTests` fail before required menu titles exist | app tests pass and `--verify` passes | Full-screen/multi-display behavior is manual gate. |
+| 11 Lottie/assets | fetch-script resource check fails before JSON files are fetched; `LottieStatusIconViewTests` fail before icon mapping exists | tests, build/run verify, and visual comparison are recorded | Native renderer must preserve useAnimations behavior as closely as possible. |
+| 12 Integration | telemetry expectation fails before gesture HUD logging is wired | telemetry shows bounded state transitions | Manual gesture-to-action matrix is required. |
+| 13 Metrics/Vision gate | `RecognitionMetricsTests` fail before collector exists | metrics tests pass; manual Vision gate recorded | Failing gate triggers MediaPipe spike approval flow. |
+| 14 Performance/windowing | no new production logic unless a failing metric/window regression is found | performance and window matrix recorded | Use test-triage for failures and signing-entitlements for trust issues. |
+| 15 Final closure | final review may fail if evidence missing | full test/build/smoke/E2E/review evidence complete | No completion claim without verification-before-completion. |
+
 ## Planned File Structure
 
 ```text
@@ -143,17 +166,27 @@ Sources/WalkFlowMacApp/Resources/Lottie/arrowUp.json
 Sources/WalkFlowMacApp/Resources/Lottie/dribbble.json
 Sources/WalkFlowMacApp/Resources/Lottie/infinity.json
 Sources/WalkFlowMacApp/Resources/Lottie/lock.json
-Docs/THIRD_PARTY_NOTICES.md
+docs/THIRD_PARTY_NOTICES.md
 Tests/WalkFlowCoreTests/GestureStateMachineTests.swift
+Tests/WalkFlowCoreTests/DomainTypesTests.swift
 Tests/WalkFlowCoreTests/GestureClassifierTests.swift
 Tests/WalkFlowCoreTests/HUDStateReducerTests.swift
 Tests/WalkFlowCoreTests/SettingsStoreTests.swift
 Tests/WalkFlowCoreTests/RecognitionMetricsTests.swift
+Tests/WalkFlowMacAppTests/SystemPermissionServiceTests.swift
+Tests/WalkFlowMacAppTests/CGEventOutputTests.swift
+Tests/WalkFlowMacAppTests/CameraPreviewViewTests.swift
+Tests/WalkFlowMacAppTests/VisionHandPoseProviderTests.swift
+Tests/WalkFlowMacAppTests/AppControllerTests.swift
+Tests/WalkFlowMacAppTests/MainWindowControllerTests.swift
+Tests/WalkFlowMacAppTests/HUDWindowControllerTests.swift
+Tests/WalkFlowMacAppTests/MenuBarControllerTests.swift
+Tests/WalkFlowMacAppTests/LottieStatusIconViewTests.swift
 ```
 
 ## Phase 0: Preflight And Safety Gates
 
-### Task 0.1: Confirm execution baseline
+### Task 0.1: Confirm execution baseline and local-only boundaries
 
 **Files:**
 - Read local-only if present: `AGENTS.md`
@@ -217,11 +250,22 @@ Only commit task-scoped files. Do not push. Do not run destructive git operation
 Run:
 
 ```bash
-git check-ignore -v AGENTS.md .superpowers/ docs/superpowers/
+git check-ignore -v AGENTS.md .superpowers/ docs/superpowers/ .worktrees/ worktrees/
 git ls-files AGENTS.md .superpowers docs/superpowers
 ```
 
-Expected: `git check-ignore` shows all three paths are ignored by `.gitignore`; `git ls-files` prints no tracked files for those paths.
+Expected: `git check-ignore` shows all local-only paths and worktree directories are ignored by `.gitignore`; `git ls-files` prints no tracked files for `AGENTS.md`, `.superpowers`, or `docs/superpowers`.
+
+- [ ] **Step 5: Record implementation baseline**
+
+Run:
+
+```bash
+WALKFLOW_IMPL_BASE_SHA="$(git rev-parse HEAD)"
+printf 'WALKFLOW_IMPL_BASE_SHA=%s\n' "$WALKFLOW_IMPL_BASE_SHA"
+```
+
+Append the exact SHA to `docs/tasks/001-gesture-control-macos-app-bootstrap/progress.md` before Phase 1 begins. Later final review must use this SHA as the start of the implementation range, not the repository root commit.
 
 ## Phase 1: Bootstrap Buildable AppKit Project
 
@@ -272,6 +316,10 @@ let package = Package(
         .testTarget(
             name: "WalkFlowCoreTests",
             dependencies: ["WalkFlowCore"]
+        ),
+        .testTarget(
+            name: "WalkFlowMacAppTests",
+            dependencies: ["WalkFlowMacApp", "WalkFlowCore"]
         )
     ]
 )
@@ -449,7 +497,12 @@ stop_app() {
 }
 
 stage_bundle() {
-  /bin/rm -rf "$BUNDLE_PATH"
+  if [[ -d "$BUNDLE_PATH" ]]; then
+    case "$BUNDLE_PATH" in
+      "$DIST_DIR"/*.app) /bin/rm -R "$BUNDLE_PATH" ;;
+      *) echo "Refusing to remove unexpected bundle path: $BUNDLE_PATH" >&2; exit 2 ;;
+    esac
+  fi
   /bin/mkdir -p "$BUNDLE_PATH/Contents/MacOS" "$BUNDLE_PATH/Contents/Resources"
   /bin/cp "$ROOT_DIR/.build/$CONFIGURATION/$APP_NAME" "$EXECUTABLE_PATH"
   /bin/cp "$INFO_PLIST_SOURCE" "$BUNDLE_PATH/Contents/Info.plist"
@@ -572,9 +625,51 @@ git commit -m "chore: bootstrap AppKit macOS app"
 - Create: `Sources/WalkFlowCore/Domain/HUDTypes.swift`
 - Create: `Sources/WalkFlowCore/Domain/PermissionTypes.swift`
 - Create: `Sources/WalkFlowCore/Domain/EventTypes.swift`
+- Create: `Tests/WalkFlowCoreTests/DomainTypesTests.swift`
 - Modify: `Sources/WalkFlowCore/Domain/GestureTypes.swift`
 
-- [ ] **Step 1: Add hand-pose value types**
+- [ ] **Step 1: Write failing domain type tests**
+
+Create `Tests/WalkFlowCoreTests/DomainTypesTests.swift` before adding the domain files:
+
+```swift
+import XCTest
+@testable import WalkFlowCore
+
+final class DomainTypesTests: XCTestCase {
+    func testDefaultTimingMatchesGestureContract() {
+        XCTAssertEqual(AppSettings.defaults.gestureTiming.readyHoldMilliseconds, 300)
+        XCTAssertEqual(AppSettings.defaults.gestureTiming.scrollHoldMilliseconds, 300)
+        XCTAssertEqual(AppSettings.defaults.gestureTiming.continuousScrollHoldMilliseconds, 700)
+        XCTAssertEqual(AppSettings.defaults.gestureTiming.commandHoldMilliseconds, 300)
+        XCTAssertEqual(AppSettings.defaults.gestureTiming.commandCooldownMilliseconds, 1000)
+        XCTAssertEqual(AppSettings.defaults.gestureTiming.controlWindowSeconds, 5.0)
+    }
+
+    func testPermissionsRequireCameraAndAccessibilityToControl() {
+        XCTAssertTrue(PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired).canControl)
+        XCTAssertFalse(PermissionSnapshot(camera: .denied, accessibility: .granted, inputMonitoring: .notRequired).canControl)
+        XCTAssertFalse(PermissionSnapshot(camera: .granted, accessibility: .denied, inputMonitoring: .notRequired).canControl)
+    }
+
+    func testHUDPresentationCanRepresentStandbyAndPermissionBlock() {
+        XCTAssertEqual(HUDPresentation(dot: .green, icon: .none, message: "Standby").icon, .none)
+        XCTAssertEqual(HUDPresentation(dot: .red, icon: .alertTriangle, message: "Permission").dot, .red)
+    }
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter DomainTypesTests
+```
+
+Expected: FAIL because `AppSettings`, `PermissionSnapshot`, and `HUDPresentation` do not exist yet.
+
+- [ ] **Step 3: Add hand-pose value types**
 
 Create `Sources/WalkFlowCore/Domain/HandPoseSnapshot.swift`:
 
@@ -640,7 +735,7 @@ public struct HandPoseSnapshot: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 2: Add settings defaults**
+- [ ] **Step 4: Add settings defaults**
 
 Create `Sources/WalkFlowCore/Domain/AppSettings.swift`:
 
@@ -704,7 +799,7 @@ public struct AppSettings: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 3: Add HUD and permission types**
+- [ ] **Step 5: Add HUD and permission types**
 
 Create `Sources/WalkFlowCore/Domain/HUDTypes.swift`:
 
@@ -794,7 +889,7 @@ public enum ScrollStep: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 4: Expand gesture observation type**
+- [ ] **Step 6: Expand gesture observation type**
 
 Modify `Sources/WalkFlowCore/Domain/GestureTypes.swift`:
 
@@ -824,7 +919,7 @@ public struct GestureObservation: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 5: Build**
+- [ ] **Step 7: Verify domain tests**
 
 Run:
 
@@ -832,7 +927,7 @@ Run:
 swift test
 ```
 
-Expected: tests pass.
+Expected: `DomainTypesTests` and the full suite pass.
 
 ### Task 2.2: Implement settings persistence
 
@@ -986,24 +1081,7 @@ Expected: tests pass.
 - Create: `Sources/WalkFlowCore/Gesture/GestureStateMachine.swift`
 - Replace: `Tests/WalkFlowCoreTests/GestureStateMachineTests.swift`
 
-- [ ] **Step 1: Add clock abstraction**
-
-Create `Sources/WalkFlowCore/Time/Clock.swift`:
-
-```swift
-import Foundation
-
-public protocol Clock {
-    var now: TimeInterval { get }
-}
-
-public struct SystemClock: Clock {
-    public init() {}
-    public var now: TimeInterval { Date().timeIntervalSince1970 }
-}
-```
-
-- [ ] **Step 2: Write state machine tests**
+- [ ] **Step 1: Write state machine tests**
 
 Replace `Tests/WalkFlowCoreTests/GestureStateMachineTests.swift` with tests covering every committed behavior:
 
@@ -1109,7 +1187,7 @@ private struct TestClock: Clock {
 }
 ```
 
-- [ ] **Step 3: Run failing tests**
+- [ ] **Step 2: Run RED**
 
 Run:
 
@@ -1118,6 +1196,23 @@ swift test --filter GestureStateMachineTests
 ```
 
 Expected: fails because `GestureStateMachine`, `GestureMode`, and output types do not exist.
+
+- [ ] **Step 3: Add clock abstraction**
+
+Create `Sources/WalkFlowCore/Time/Clock.swift`:
+
+```swift
+import Foundation
+
+public protocol Clock {
+    var now: TimeInterval { get }
+}
+
+public struct SystemClock: Clock {
+    public init() {}
+    public var now: TimeInterval { Date().timeIntervalSince1970 }
+}
+```
 
 - [ ] **Step 4: Implement state machine**
 
@@ -1155,7 +1250,14 @@ public struct GestureStateMachine {
     }
 
     public mutating func handle(_ observation: GestureObservation) -> GestureStateOutput {
+        let shouldStopContinuousForGestureChange = isContinuousScrolling && observation.kind != currentGesture
         updateGestureTracking(with: observation)
+
+        if shouldStopContinuousForGestureChange,
+           observation.kind != .handLost,
+           observation.kind != .fist {
+            return output(action: .stopContinuousScroll, hud: defaultHUD())
+        }
 
         if mode == .ready,
            let lastActionAt,
@@ -1385,13 +1487,16 @@ private extension HandPoseSnapshot {
     }
 
     static func indexDown(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
-        fixture(timestamp: timestamp, confidence: confidence, tips: [
+        var snapshot = fixture(timestamp: timestamp, confidence: confidence, tips: [
             .thumbTip: HandPoint(x: 0.34, y: 0.46, confidence: confidence),
             .indexTip: HandPoint(x: 0.50, y: 0.08, confidence: confidence),
             .middleTip: HandPoint(x: 0.55, y: 0.45, confidence: confidence),
             .ringTip: HandPoint(x: 0.62, y: 0.43, confidence: confidence),
             .littleTip: HandPoint(x: 0.69, y: 0.41, confidence: confidence)
         ])
+        snapshot.points[.indexPIP] = HandPoint(x: 0.50, y: 0.26, confidence: confidence)
+        snapshot.points[.indexDIP] = HandPoint(x: 0.50, y: 0.16, confidence: confidence)
+        return snapshot
     }
 
     static func fist(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
@@ -1513,12 +1618,16 @@ public struct GestureClassifier {
     }
 
     private func isIndexDirection(_ snapshot: HandPoseSnapshot, up: Bool) -> Bool {
-        guard isExtended(snapshot, tip: .indexTip, pip: .indexPIP, mcp: .indexMCP),
-              isCurled(snapshot, tip: .middleTip, pip: .middlePIP, mcp: .middleMCP),
+        guard isCurled(snapshot, tip: .middleTip, pip: .middlePIP, mcp: .middleMCP),
               isCurled(snapshot, tip: .ringTip, pip: .ringPIP, mcp: .ringMCP),
               isCurled(snapshot, tip: .littleTip, pip: .littlePIP, mcp: .littleMCP),
               let tip = snapshot[.indexTip],
+              let pip = snapshot[.indexPIP],
               let mcp = snapshot[.indexMCP] else {
+            return false
+        }
+        let indexExtended = up ? (tip.y > pip.y && pip.y > mcp.y) : (tip.y < pip.y && pip.y < mcp.y)
+        guard indexExtended else {
             return false
         }
         return up ? tip.y > mcp.y + 0.25 : tip.y < mcp.y - 0.25
@@ -1636,7 +1745,17 @@ final class HUDStateReducerTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Implement reducer**
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter HUDStateReducerTests
+```
+
+Expected: FAIL because `HUDStateReducer` does not exist.
+
+- [ ] **Step 3: Implement reducer**
 
 Create `Sources/WalkFlowCore/HUD/HUDStateReducer.swift`:
 
@@ -1669,7 +1788,7 @@ public struct HUDStateReducer {
 }
 ```
 
-- [ ] **Step 3: Verify reducer**
+- [ ] **Step 4: Verify reducer**
 
 Run:
 
@@ -1686,10 +1805,78 @@ Expected: tests pass.
 
 **Files:**
 - Create: `Sources/WalkFlowMacApp/Permissions/SystemPermissionService.swift`
-- Modify: `Sources/WalkFlowMacApp/Resources/Info.plist`
-- Modify: `Sources/WalkFlowMacApp/App/AppDelegate.swift`
+- Create: `Tests/WalkFlowMacAppTests/SystemPermissionServiceTests.swift`
+- Read: `Sources/WalkFlowMacApp/Resources/Info.plist`
 
-- [ ] **Step 1: Implement system permission checks**
+- [ ] **Step 1: Write failing permission service tests**
+
+Create `Tests/WalkFlowMacAppTests/SystemPermissionServiceTests.swift`:
+
+```swift
+import AVFoundation
+import XCTest
+@testable import WalkFlowCore
+@testable import WalkFlowMacApp
+
+final class SystemPermissionServiceTests: XCTestCase {
+    func testSnapshotReportsGrantedCameraAndAccessibility() {
+        let service = SystemPermissionService(
+            cameraProvider: FakeCameraProvider(status: .authorized),
+            accessibilityProvider: FakeAccessibilityProvider(trusted: true)
+        )
+
+        XCTAssertEqual(service.snapshot(), PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired))
+    }
+
+    func testSnapshotBlocksWhenCameraDeniedOrAccessibilityMissing() {
+        let cameraDenied = SystemPermissionService(
+            cameraProvider: FakeCameraProvider(status: .denied),
+            accessibilityProvider: FakeAccessibilityProvider(trusted: true)
+        )
+        let accessibilityDenied = SystemPermissionService(
+            cameraProvider: FakeCameraProvider(status: .authorized),
+            accessibilityProvider: FakeAccessibilityProvider(trusted: false)
+        )
+
+        XCTAssertFalse(cameraDenied.snapshot().canControl)
+        XCTAssertFalse(accessibilityDenied.snapshot().canControl)
+    }
+}
+
+private struct FakeCameraProvider: CameraAuthorizationProviding {
+    let status: AVAuthorizationStatus
+
+    func authorizationStatus() -> AVAuthorizationStatus {
+        status
+    }
+
+    func requestAccess(completion: @escaping (Bool) -> Void) {
+        completion(status == .authorized)
+    }
+}
+
+private struct FakeAccessibilityProvider: AccessibilityTrustProviding {
+    let trusted: Bool
+
+    func isTrusted() -> Bool {
+        trusted
+    }
+
+    func promptForTrust() {}
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter SystemPermissionServiceTests
+```
+
+Expected: FAIL because `SystemPermissionService`, `CameraAuthorizationProviding`, and `AccessibilityTrustProviding` do not exist.
+
+- [ ] **Step 3: Implement system permission checks**
 
 Create `Sources/WalkFlowMacApp/Permissions/SystemPermissionService.swift`:
 
@@ -1699,7 +1886,49 @@ import ApplicationServices
 import Foundation
 import WalkFlowCore
 
+protocol CameraAuthorizationProviding {
+    func authorizationStatus() -> AVAuthorizationStatus
+    func requestAccess(completion: @escaping (Bool) -> Void)
+}
+
+struct AVFoundationCameraAuthorizationProvider: CameraAuthorizationProviding {
+    func authorizationStatus() -> AVAuthorizationStatus {
+        AVCaptureDevice.authorizationStatus(for: .video)
+    }
+
+    func requestAccess(completion: @escaping (Bool) -> Void) {
+        AVCaptureDevice.requestAccess(for: .video, completionHandler: completion)
+    }
+}
+
+protocol AccessibilityTrustProviding {
+    func isTrusted() -> Bool
+    func promptForTrust()
+}
+
+struct AXAccessibilityTrustProvider: AccessibilityTrustProviding {
+    func isTrusted() -> Bool {
+        AXIsProcessTrusted()
+    }
+
+    func promptForTrust() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+    }
+}
+
 final class SystemPermissionService {
+    private let cameraProvider: CameraAuthorizationProviding
+    private let accessibilityProvider: AccessibilityTrustProviding
+
+    init(
+        cameraProvider: CameraAuthorizationProviding = AVFoundationCameraAuthorizationProvider(),
+        accessibilityProvider: AccessibilityTrustProviding = AXAccessibilityTrustProvider()
+    ) {
+        self.cameraProvider = cameraProvider
+        self.accessibilityProvider = accessibilityProvider
+    }
+
     func snapshot() -> PermissionSnapshot {
         PermissionSnapshot(
             camera: cameraStatus(),
@@ -1709,16 +1938,15 @@ final class SystemPermissionService {
     }
 
     func requestCameraAccess(completion: @escaping (Bool) -> Void) {
-        AVCaptureDevice.requestAccess(for: .video, completionHandler: completion)
+        cameraProvider.requestAccess(completion: completion)
     }
 
     func promptForAccessibility() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
+        accessibilityProvider.promptForTrust()
     }
 
     private func cameraStatus() -> PermissionStatus {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        switch cameraProvider.authorizationStatus() {
         case .authorized:
             return .granted
         case .denied, .restricted:
@@ -1731,12 +1959,23 @@ final class SystemPermissionService {
     }
 
     private func accessibilityStatus() -> PermissionStatus {
-        AXIsProcessTrusted() ? .granted : .denied
+        accessibilityProvider.isTrusted() ? .granted : .denied
     }
 }
 ```
 
-- [ ] **Step 2: Verify Info.plist camera purpose string**
+- [ ] **Step 4: Verify permission tests**
+
+Run:
+
+```bash
+swift test --filter SystemPermissionServiceTests
+swift test
+```
+
+Expected: permission tests and full suite pass.
+
+- [ ] **Step 5: Verify Info.plist camera purpose string**
 
 Run:
 
@@ -1750,7 +1989,7 @@ Expected:
 WalkFlow-Mac uses the camera to recognize hand gestures for remote control.
 ```
 
-- [ ] **Step 3: Build**
+- [ ] **Step 6: Build**
 
 Run:
 
@@ -1764,8 +2003,75 @@ Expected: build succeeds.
 
 **Files:**
 - Create: `Sources/WalkFlowMacApp/Events/CGEventOutput.swift`
+- Create: `Tests/WalkFlowMacAppTests/CGEventOutputTests.swift`
 
-- [ ] **Step 1: Implement CGEvent output**
+- [ ] **Step 1: Write dry-run event output tests**
+
+Create `Tests/WalkFlowMacAppTests/CGEventOutputTests.swift`:
+
+```swift
+import Carbon.HIToolbox
+import CoreGraphics
+import XCTest
+@testable import WalkFlowCore
+@testable import WalkFlowMacApp
+
+final class CGEventOutputTests: XCTestCase {
+    func testScrollActionsMapToExpectedDeltasWithoutPostingRealEvents() {
+        let poster = RecordingEventPoster()
+        let output = CGEventOutput(poster: poster)
+
+        output.execute(.scrollUp(step: .single), scrollSettings: .defaults)
+        output.execute(.scrollDown(step: .continuous), scrollSettings: .defaults)
+
+        XCTAssertEqual(poster.events, [
+            .scroll(deltaY: ScrollSettings.defaults.singleStepDeltaY),
+            .scroll(deltaY: -ScrollSettings.defaults.continuousDeltaY)
+        ])
+    }
+
+    func testRightCommandPostsRightCommandDownAndUpWithoutPostingRealEvents() {
+        let poster = RecordingEventPoster()
+        let output = CGEventOutput(poster: poster)
+
+        output.execute(.pressRightCommand, scrollSettings: .defaults)
+
+        XCTAssertEqual(poster.events, [
+            .key(keyCode: CGKeyCode(kVK_RightCommand), keyDown: true, flags: .maskCommand),
+            .key(keyCode: CGKeyCode(kVK_RightCommand), keyDown: false, flags: [])
+        ])
+    }
+}
+
+private final class RecordingEventPoster: CGEventPosting {
+    enum Event: Equatable {
+        case scroll(deltaY: Int32)
+        case key(keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags)
+    }
+
+    private(set) var events: [Event] = []
+
+    func postScroll(deltaY: Int32) {
+        events.append(.scroll(deltaY: deltaY))
+    }
+
+    func postKey(keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags) {
+        events.append(.key(keyCode: keyCode, keyDown: keyDown, flags: flags))
+    }
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter CGEventOutputTests
+```
+
+Expected: FAIL because `CGEventOutput` and `CGEventPosting` do not exist.
+
+- [ ] **Step 3: Implement CGEvent output**
 
 Create `Sources/WalkFlowMacApp/Events/CGEventOutput.swift`:
 
@@ -1779,7 +2085,40 @@ protocol ControlEventOutput {
     func execute(_ action: ControlAction, scrollSettings: ScrollSettings)
 }
 
+protocol CGEventPosting {
+    func postScroll(deltaY: Int32)
+    func postKey(keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags)
+}
+
+struct SystemCGEventPoster: CGEventPosting {
+    func postScroll(deltaY: Int32) {
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: nil,
+            units: .line,
+            wheelCount: 1,
+            wheel1: deltaY,
+            wheel2: 0,
+            wheel3: 0
+        ) else {
+            return
+        }
+        event.post(tap: .cghidEventTap)
+    }
+
+    func postKey(keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags) {
+        let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: keyDown)
+        event?.flags = flags
+        event?.post(tap: .cghidEventTap)
+    }
+}
+
 final class CGEventOutput: ControlEventOutput {
+    private let poster: CGEventPosting
+
+    init(poster: CGEventPosting = SystemCGEventPoster()) {
+        self.poster = poster
+    }
+
     func execute(_ action: ControlAction, scrollSettings: ScrollSettings) {
         switch action {
         case .none:
@@ -1787,9 +2126,9 @@ final class CGEventOutput: ControlEventOutput {
         case .stopContinuousScroll:
             return
         case .scrollUp(let step):
-            postScroll(deltaY: delta(for: step, settings: scrollSettings))
+            poster.postScroll(deltaY: delta(for: step, settings: scrollSettings))
         case .scrollDown(let step):
-            postScroll(deltaY: -delta(for: step, settings: scrollSettings))
+            poster.postScroll(deltaY: -delta(for: step, settings: scrollSettings))
         case .pressRightCommand:
             postRightCommand()
         }
@@ -1804,33 +2143,26 @@ final class CGEventOutput: ControlEventOutput {
         }
     }
 
-    private func postScroll(deltaY: Int32) {
-        guard let event = CGEvent(
-            scrollWheelEvent2Source: nil,
-            units: .line,
-            wheelCount: 1,
-            wheel1: deltaY,
-            wheel2: 0,
-            wheel3: 0
-        ) else {
-            return
-        }
-        event.post(tap: .cghidEventTap)
-    }
-
     private func postRightCommand() {
         let keyCode = CGKeyCode(kVK_RightCommand)
-        let down = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true)
-        let up = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false)
-        down?.flags = .maskCommand
-        up?.flags = []
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
+        poster.postKey(keyCode: keyCode, keyDown: true, flags: .maskCommand)
+        poster.postKey(keyCode: keyCode, keyDown: false, flags: [])
     }
 }
 ```
 
-- [ ] **Step 2: Build**
+- [ ] **Step 4: Verify dry-run event tests**
+
+Run:
+
+```bash
+swift test --filter CGEventOutputTests
+swift test
+```
+
+Expected: event-output tests and full suite pass. These tests must not post real scroll or key events.
+
+- [ ] **Step 5: Build**
 
 Run:
 
@@ -1840,7 +2172,7 @@ swift build
 
 Expected: build succeeds. If `kVK_RightCommand` is unavailable, import `Carbon.HIToolbox` exactly as shown and re-run.
 
-- [ ] **Step 3: Manual right Command verification gate**
+- [ ] **Step 6: Manual right Command verification gate**
 
 After the app is integrated enough to trigger `pressRightCommand`, use macOS Keyboard Viewer or the user's dictation configuration to verify the event is interpreted as the right-side Command key. Record the result in `review.md`. If macOS reports only generic Command, keep the feature blocked and investigate lower-level HID posting before claiming this requirement is complete.
 
@@ -1849,10 +2181,42 @@ After the app is integrated enough to trigger `pressRightCommand`, use macOS Key
 ### Task 7.1: Add AppKit camera preview
 
 **Files:**
+- Create: `Tests/WalkFlowMacAppTests/CameraPreviewViewTests.swift`
 - Create: `Sources/WalkFlowMacApp/Camera/CameraPreviewView.swift`
 - Create: `Sources/WalkFlowMacApp/Camera/CameraSessionController.swift`
 
-- [ ] **Step 1: Create preview view**
+- [ ] **Step 1: Write camera preview view tests**
+
+Create `Tests/WalkFlowMacAppTests/CameraPreviewViewTests.swift`:
+
+```swift
+import AppKit
+import AVFoundation
+import XCTest
+@testable import WalkFlowMacApp
+
+final class CameraPreviewViewTests: XCTestCase {
+    func testPreviewViewUsesCaptureVideoPreviewLayer() {
+        let view = CameraPreviewView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        view.wantsLayer = true
+
+        XCTAssertTrue(view.layer is AVCaptureVideoPreviewLayer)
+        XCTAssertEqual(view.previewLayer.videoGravity, .resizeAspectFill)
+    }
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter CameraPreviewViewTests
+```
+
+Expected: FAIL because `CameraPreviewView` does not exist.
+
+- [ ] **Step 3: Create preview view**
 
 Create `Sources/WalkFlowMacApp/Camera/CameraPreviewView.swift`:
 
@@ -1862,7 +2226,9 @@ import AVFoundation
 
 final class CameraPreviewView: NSView {
     override func makeBackingLayer() -> CALayer {
-        AVCaptureVideoPreviewLayer()
+        let layer = AVCaptureVideoPreviewLayer()
+        layer.videoGravity = .resizeAspectFill
+        return layer
     }
 
     var previewLayer: AVCaptureVideoPreviewLayer {
@@ -1872,12 +2238,11 @@ final class CameraPreviewView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         wantsLayer = true
-        previewLayer.videoGravity = .resizeAspectFill
     }
 }
 ```
 
-- [ ] **Step 2: Create capture session controller**
+- [ ] **Step 4: Create capture session controller**
 
 Create `Sources/WalkFlowMacApp/Camera/CameraSessionController.swift`:
 
@@ -1946,22 +2311,58 @@ enum CameraError: Error {
 }
 ```
 
-- [ ] **Step 3: Build**
+- [ ] **Step 5: Verify camera preview tests and build**
 
 Run:
 
 ```bash
+swift test --filter CameraPreviewViewTests
+swift test
 swift build
 ```
 
-Expected: build succeeds.
+Expected: camera preview tests, full suite, and build pass.
 
 ### Task 7.2: Add Vision hand-pose provider
 
 **Files:**
+- Create: `Tests/WalkFlowMacAppTests/VisionHandPoseProviderTests.swift`
 - Create: `Sources/WalkFlowMacApp/Vision/VisionHandPoseProvider.swift`
 
-- [ ] **Step 1: Implement Vision adapter**
+- [ ] **Step 1: Write Vision joint mapping tests**
+
+Create `Tests/WalkFlowMacAppTests/VisionHandPoseProviderTests.swift`:
+
+```swift
+import Vision
+import XCTest
+@testable import WalkFlowCore
+@testable import WalkFlowMacApp
+
+final class VisionHandPoseProviderTests: XCTestCase {
+    func testVisionJointMapCoversAllCoreHandJoints() {
+        XCTAssertEqual(VisionHandPoseProvider.jointMap.count, HandJointName.allCases.count)
+        XCTAssertEqual(VisionHandPoseProvider.jointMap[.wrist], .wrist)
+        XCTAssertEqual(VisionHandPoseProvider.jointMap[.thumbTip], .thumbTip)
+        XCTAssertEqual(VisionHandPoseProvider.jointMap[.indexTip], .indexTip)
+        XCTAssertEqual(VisionHandPoseProvider.jointMap[.middleTip], .middleTip)
+        XCTAssertEqual(VisionHandPoseProvider.jointMap[.ringTip], .ringTip)
+        XCTAssertEqual(VisionHandPoseProvider.jointMap[.littleTip], .littleTip)
+    }
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter VisionHandPoseProviderTests
+```
+
+Expected: FAIL because `VisionHandPoseProvider` and its joint map do not exist.
+
+- [ ] **Step 3: Implement Vision adapter**
 
 Create `Sources/WalkFlowMacApp/Vision/VisionHandPoseProvider.swift`:
 
@@ -2009,7 +2410,7 @@ final class VisionHandPoseProvider {
         )
     }
 
-    private static let jointMap: [VNHumanHandPoseObservation.JointName: HandJointName] = [
+    static let jointMap: [VNHumanHandPoseObservation.JointName: HandJointName] = [
         .wrist: .wrist,
         .thumbCMC: .thumbCMC,
         .thumbMP: .thumbMP,
@@ -2035,15 +2436,17 @@ final class VisionHandPoseProvider {
 }
 ```
 
-- [ ] **Step 2: Build**
+- [ ] **Step 4: Verify Vision tests and build**
 
 Run:
 
 ```bash
+swift test --filter VisionHandPoseProviderTests
+swift test
 swift build
 ```
 
-Expected: build succeeds. If Vision API names differ on the installed SDK, inspect compiler errors and adjust only the Vision adapter, not core domain types.
+Expected: Vision mapping tests, full suite, and build pass. If Vision API names differ on the installed SDK, inspect compiler errors and adjust only the Vision adapter, not core domain types.
 
 ## Phase 8: App Orchestration
 
@@ -2052,9 +2455,141 @@ Expected: build succeeds. If Vision API names differ on the installed SDK, inspe
 **Files:**
 - Create: `Sources/WalkFlowMacApp/App/AppStateStore.swift`
 - Create: `Sources/WalkFlowMacApp/App/AppController.swift`
-- Modify: `Sources/WalkFlowMacApp/App/AppDelegate.swift`
+- Create: `Tests/WalkFlowMacAppTests/AppControllerTests.swift`
 
-- [ ] **Step 1: Create state store**
+- [ ] **Step 1: Write AppController tests with fake dependencies**
+
+Create `Tests/WalkFlowMacAppTests/AppControllerTests.swift`:
+
+```swift
+import AppKit
+import AVFoundation
+import XCTest
+@testable import WalkFlowCore
+@testable import WalkFlowMacApp
+
+final class AppControllerTests: XCTestCase {
+    func testStartRecognitionDoesNotStartCameraWhenPermissionsAreBlocked() {
+        let camera = FakeCameraController()
+        let hud = RecordingHUDPresenter()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .denied, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: camera,
+            eventOutput: RecordingControlEventOutput()
+        )
+        controller.hudPresenter = hud
+
+        controller.startRecognition()
+
+        XCTAssertEqual(camera.startCount, 0)
+        XCTAssertEqual(hud.presentations.last?.dot, .red)
+    }
+
+    func testStartRecognitionStartsCameraWhenEnabledAndPermitted() {
+        let camera = FakeCameraController()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: camera,
+            eventOutput: RecordingControlEventOutput()
+        )
+
+        controller.startRecognition()
+
+        XCTAssertEqual(camera.startCount, 1)
+    }
+
+    func testDisablingAppPublishesLockedHUD() {
+        let hud = RecordingHUDPresenter()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: FakeCameraController(),
+            eventOutput: RecordingControlEventOutput()
+        )
+        controller.hudPresenter = hud
+
+        controller.setEnabled(false)
+
+        XCTAssertEqual(hud.presentations.last?.dot, .red)
+        XCTAssertEqual(hud.presentations.last?.icon, .lock)
+    }
+
+    func testDisabledAppDoesNotExecuteGestureActions() {
+        let output = RecordingControlEventOutput()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: FakeCameraController(),
+            eventOutput: output
+        )
+
+        controller.handleObservation(.init(kind: .openPalm, confidence: 1, timestamp: 0))
+        controller.handleObservation(.init(kind: .openPalm, confidence: 1, timestamp: 0.31))
+        controller.setEnabled(false)
+        controller.handleObservation(.init(kind: .indexUp, confidence: 1, timestamp: 1.00))
+        controller.handleObservation(.init(kind: .indexUp, confidence: 1, timestamp: 1.31))
+
+        XCTAssertTrue(output.actions.isEmpty)
+    }
+}
+
+private final class FakeSettingsStore: SettingsStoring {
+    func load() -> AppSettings { .defaults }
+    func save(_ settings: AppSettings) {}
+}
+
+private final class FakePermissionService: PermissionServicing {
+    let snapshotValue: PermissionSnapshot
+
+    init(snapshot: PermissionSnapshot) {
+        snapshotValue = snapshot
+    }
+
+    func snapshot() -> PermissionSnapshot {
+        snapshotValue
+    }
+}
+
+private final class FakeCameraController: CameraControlling {
+    let session = AVCaptureSession()
+    weak var consumer: CameraFrameConsumer?
+    private(set) var startCount = 0
+
+    func configure() throws {}
+    func start() { startCount += 1 }
+    func stop() {}
+}
+
+private final class RecordingControlEventOutput: ControlEventOutput {
+    private(set) var actions: [ControlAction] = []
+
+    func execute(_ action: ControlAction, scrollSettings: ScrollSettings) {
+        actions.append(action)
+    }
+}
+
+private final class RecordingHUDPresenter: HUDPresenting {
+    private(set) var presentations: [HUDPresentation] = []
+
+    func update(_ presentation: HUDPresentation) {
+        presentations.append(presentation)
+    }
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter AppControllerTests
+```
+
+Expected: FAIL because `AppController`, `SettingsStoring`, `PermissionServicing`, `CameraControlling`, and `handleObservation(_:)` do not exist or are not injectable yet.
+
+- [ ] **Step 3: Create state store**
 
 Create `Sources/WalkFlowMacApp/App/AppStateStore.swift`:
 
@@ -2071,7 +2606,7 @@ final class AppStateStore {
 }
 ```
 
-- [ ] **Step 2: Create controller**
+- [ ] **Step 4: Create controller**
 
 Create `Sources/WalkFlowMacApp/App/AppController.swift`:
 
@@ -2084,19 +2619,67 @@ protocol HUDPresenting: AnyObject {
     func update(_ presentation: HUDPresentation)
 }
 
+protocol SettingsStoring {
+    func load() -> AppSettings
+    func save(_ settings: AppSettings)
+}
+
+extension SettingsStore: SettingsStoring {}
+
+protocol PermissionServicing {
+    func snapshot() -> PermissionSnapshot
+}
+
+extension SystemPermissionService: PermissionServicing {}
+
+protocol CameraControlling: AnyObject {
+    var session: AVCaptureSession { get }
+    var consumer: CameraFrameConsumer? { get set }
+    func configure() throws
+    func start()
+    func stop()
+}
+
+extension CameraSessionController: CameraControlling {}
+
+protocol VisionDetecting {
+    func detect(sampleBuffer: CMSampleBuffer, timestamp: TimeInterval) throws -> HandPoseSnapshot?
+}
+
+extension VisionHandPoseProvider: VisionDetecting {}
+
+protocol GestureClassifying {
+    func classify(_ snapshot: HandPoseSnapshot?) -> GestureObservation
+}
+
+extension GestureClassifier: GestureClassifying {}
+
 final class AppController: CameraFrameConsumer {
     let state = AppStateStore()
-    private let settingsStore = SettingsStore()
-    private let permissions = SystemPermissionService()
-    private let camera = CameraSessionController()
-    private let vision = VisionHandPoseProvider()
-    private let classifier = GestureClassifier()
+    private let settingsStore: SettingsStoring
+    private let permissions: PermissionServicing
+    private let camera: CameraControlling
+    private let vision: VisionDetecting
+    private let classifier: GestureClassifying
     private var stateMachine = GestureStateMachine(settings: .defaults)
     private let hudReducer = HUDStateReducer()
-    private let eventOutput: ControlEventOutput = CGEventOutput()
+    private let eventOutput: ControlEventOutput
     weak var hudPresenter: HUDPresenting?
 
-    init() {
+    init(
+        settingsStore: SettingsStoring = SettingsStore(),
+        permissions: PermissionServicing = SystemPermissionService(),
+        camera: CameraControlling = CameraSessionController(),
+        vision: VisionDetecting = VisionHandPoseProvider(),
+        classifier: GestureClassifying = GestureClassifier(),
+        eventOutput: ControlEventOutput = CGEventOutput()
+    ) {
+        self.settingsStore = settingsStore
+        self.permissions = permissions
+        self.camera = camera
+        self.vision = vision
+        self.classifier = classifier
+        self.eventOutput = eventOutput
         state.settings = settingsStore.load()
         stateMachine = GestureStateMachine(settings: state.settings)
         camera.consumer = self
@@ -2145,6 +2728,10 @@ final class AppController: CameraFrameConsumer {
         let timestamp = Date().timeIntervalSince1970
         let snapshot = try? vision.detect(sampleBuffer: sampleBuffer, timestamp: timestamp)
         let observation = classifier.classify(snapshot)
+        handleObservation(observation)
+    }
+
+    func handleObservation(_ observation: GestureObservation) {
         var output = stateMachine.handle(observation)
         if state.permissions.canControl == false || state.isEnabled == false || state.isPaused {
             output = .init(mode: .blocked, action: .none, hud: output.hud)
@@ -2169,7 +2756,18 @@ final class AppController: CameraFrameConsumer {
 }
 ```
 
-- [ ] **Step 3: Build**
+- [ ] **Step 5: Verify AppController tests**
+
+Run:
+
+```bash
+swift test --filter AppControllerTests
+swift test
+```
+
+Expected: AppController tests and full suite pass.
+
+- [ ] **Step 6: Build**
 
 Run:
 
@@ -2184,13 +2782,89 @@ Expected: build succeeds.
 ### Task 9.1: Build split main window and permission panel
 
 **Files:**
+- Create: `Tests/WalkFlowMacAppTests/MainWindowControllerTests.swift`
 - Create: `Sources/WalkFlowMacApp/UI/MainWindowController.swift`
 - Create: `Sources/WalkFlowMacApp/UI/ControlPanelView.swift`
 - Create: `Sources/WalkFlowMacApp/UI/PermissionPanelView.swift`
 - Create: `Sources/WalkFlowMacApp/UI/PreviewContainerView.swift`
-- Modify: `Sources/WalkFlowMacApp/App/AppDelegate.swift`
 
-- [ ] **Step 1: Create main window controller**
+- [ ] **Step 1: Write main window controller tests**
+
+Create `Tests/WalkFlowMacAppTests/MainWindowControllerTests.swift`:
+
+```swift
+import AppKit
+import AVFoundation
+import XCTest
+@testable import WalkFlowCore
+@testable import WalkFlowMacApp
+
+final class MainWindowControllerTests: XCTestCase {
+    func testMainWindowUsesSplitLayoutWithOneToFourRatio() throws {
+        let controller = MainWindowController(appController: makeController())
+        let window = try XCTUnwrap(controller.window)
+        let split = try XCTUnwrap(window.contentView as? NSSplitView)
+
+        XCTAssertEqual(window.title, "WalkFlow-Mac")
+        XCTAssertTrue(split.isVertical)
+        XCTAssertEqual(split.arrangedSubviews.count, 2)
+
+        let left = split.arrangedSubviews[0]
+        let width = left.constraints.first { $0.firstAttribute == .width && $0.relation == .equal }
+        XCTAssertEqual(width?.constant, 220)
+    }
+
+    private func makeController() -> AppController {
+        AppController(
+            settingsStore: MainWindowFakeSettingsStore(),
+            permissions: MainWindowFakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: MainWindowFakeCameraController(),
+            eventOutput: MainWindowRecordingControlEventOutput()
+        )
+    }
+}
+
+private final class MainWindowFakeSettingsStore: SettingsStoring {
+    func load() -> AppSettings { .defaults }
+    func save(_ settings: AppSettings) {}
+}
+
+private final class MainWindowFakePermissionService: PermissionServicing {
+    let snapshotValue: PermissionSnapshot
+
+    init(snapshot: PermissionSnapshot) {
+        snapshotValue = snapshot
+    }
+
+    func snapshot() -> PermissionSnapshot {
+        snapshotValue
+    }
+}
+
+private final class MainWindowFakeCameraController: CameraControlling {
+    let session = AVCaptureSession()
+    weak var consumer: CameraFrameConsumer?
+    func configure() throws {}
+    func start() {}
+    func stop() {}
+}
+
+private final class MainWindowRecordingControlEventOutput: ControlEventOutput {
+    func execute(_ action: ControlAction, scrollSettings: ScrollSettings) {}
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter MainWindowControllerTests
+```
+
+Expected: FAIL because `MainWindowController` and the AppKit UI views do not exist.
+
+- [ ] **Step 3: Create main window controller**
 
 Create `Sources/WalkFlowMacApp/UI/MainWindowController.swift`:
 
@@ -2231,7 +2905,7 @@ final class MainWindowController: NSWindowController {
 }
 ```
 
-- [ ] **Step 2: Create control panel**
+- [ ] **Step 4: Create control panel**
 
 Create `Sources/WalkFlowMacApp/UI/ControlPanelView.swift`:
 
@@ -2267,8 +2941,8 @@ final class ControlPanelView: NSView {
         stack.addArrangedSubview(permissions)
         stack.addArrangedSubview(enable)
         stack.addArrangedSubview(pause)
-        stack.addArrangedSubview(NSTextField(labelWithString: "HUD: pinned, draggable, upper-right"))
-        stack.addArrangedSubview(NSTextField(labelWithString: "Shortcut: configurable later"))
+        stack.addArrangedSubview(NSTextField(labelWithString: "HUD Position: Pinned"))
+        stack.addArrangedSubview(NSTextField(labelWithString: "Shortcut: Not Set"))
 
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -2288,7 +2962,7 @@ final class ControlPanelView: NSView {
 }
 ```
 
-- [ ] **Step 3: Create permission panel**
+- [ ] **Step 5: Create permission panel**
 
 Create `Sources/WalkFlowMacApp/UI/PermissionPanelView.swift`:
 
@@ -2335,7 +3009,7 @@ final class PermissionPanelView: NSView {
 }
 ```
 
-- [ ] **Step 4: Create preview container**
+- [ ] **Step 6: Create preview container**
 
 Create `Sources/WalkFlowMacApp/UI/PreviewContainerView.swift`:
 
@@ -2362,55 +3036,94 @@ final class PreviewContainerView: NSView {
 }
 ```
 
-- [ ] **Step 5: Wire AppDelegate**
+- [ ] **Step 7: Verify main window tests and build**
 
-Replace the launch window construction in `Sources/WalkFlowMacApp/App/AppDelegate.swift` with:
+Run:
 
-```swift
-import AppKit
-
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let appController = AppController()
-    private var mainWindowController: MainWindowController?
-    private var hudWindowController: HUDWindowController?
-    private var menuBarController: MenuBarController?
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        let main = MainWindowController(appController: appController)
-        main.showWindow(nil)
-        main.window?.makeKeyAndOrderFront(nil)
-        mainWindowController = main
-
-        let hud = HUDWindowController(settingsStore: SettingsStore())
-        hud.show()
-        hudWindowController = hud
-        appController.hudPresenter = hud
-
-        menuBarController = MenuBarController(appController: appController, mainWindowController: main, hudWindowController: hud)
-
-        appController.refreshPermissions()
-        appController.configureCameraIfPermitted()
-        appController.startRecognition()
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
-    }
-}
+```bash
+swift test --filter MainWindowControllerTests
+swift test
+swift build
 ```
 
-This will not compile until HUD and menu bar files are added in Phase 10. Keep this step in the same branch and continue directly to Phase 10 before running full build.
+Expected: main window tests, full suite, and build pass. Do not wire `AppDelegate` to HUD/menu in this phase; complete app launch wiring happens in Phase 10 after those types exist.
 
 ## Phase 10: HUD Floating Panel And Menu Bar
 
 ### Task 10.1: Implement HUD view and floating panel
 
 **Files:**
+- Create: `Tests/WalkFlowMacAppTests/HUDWindowControllerTests.swift`
+- Create: `Sources/WalkFlowMacApp/UI/LottieStatusIconView.swift`
 - Create: `Sources/WalkFlowMacApp/UI/HUDView.swift`
 - Create: `Sources/WalkFlowMacApp/UI/HUDWindowController.swift`
 
-- [ ] **Step 1: Create HUD view**
+- [ ] **Step 1: Write HUD positioning tests**
+
+Create `Tests/WalkFlowMacAppTests/HUDWindowControllerTests.swift`:
+
+```swift
+import AppKit
+import XCTest
+@testable import WalkFlowMacApp
+
+final class HUDWindowControllerTests: XCTestCase {
+    func testFallbackOriginUsesUpperRightOfVisibleFrame() {
+        let visibleFrame = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let origin = HUDWindowController.fallbackOrigin(visibleFrame: visibleFrame, panelSize: NSSize(width: 160, height: 110))
+
+        XCTAssertEqual(origin.x, 1260)
+        XCTAssertEqual(origin.y, 770)
+    }
+
+    func testSavedOriginIsRejectedWhenPanelWouldBeOffScreen() {
+        let visibleFrame = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let origin = HUDWindowController.restoredOrigin(
+            saved: NSPoint(x: 3000, y: 3000),
+            visibleFrames: [visibleFrame],
+            panelSize: NSSize(width: 160, height: 110)
+        )
+
+        XCTAssertEqual(origin, HUDWindowController.fallbackOrigin(visibleFrame: visibleFrame, panelSize: NSSize(width: 160, height: 110)))
+    }
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter HUDWindowControllerTests
+```
+
+Expected: FAIL because `HUDWindowController` and its pure positioning helpers do not exist.
+
+- [ ] **Step 3: Create temporary status icon view**
+
+Create `Sources/WalkFlowMacApp/UI/LottieStatusIconView.swift` as a no-animation placeholder so Phase 10 can compile before Lottie assets are fetched. Phase 11 replaces this implementation with the native Lottie renderer:
+
+```swift
+import AppKit
+import WalkFlowCore
+
+final class LottieStatusIconView: NSView {
+    private(set) var currentIcon: HUDIcon = .none
+
+    func show(icon: HUDIcon) {
+        currentIcon = icon
+        isHidden = icon == .none
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.clear.setFill()
+        dirtyRect.fill()
+    }
+}
+```
+
+- [ ] **Step 4: Create HUD view**
 
 Create `Sources/WalkFlowMacApp/UI/HUDView.swift`:
 
@@ -2462,7 +3175,7 @@ final class HUDView: NSView {
 }
 ```
 
-- [ ] **Step 2: Create HUD window controller**
+- [ ] **Step 5: Create HUD window controller**
 
 Create `Sources/WalkFlowMacApp/UI/HUDWindowController.swift`:
 
@@ -2471,6 +3184,7 @@ import AppKit
 import WalkFlowCore
 
 final class HUDWindowController: NSWindowController, HUDPresenting {
+    private static let panelSize = NSSize(width: 160, height: 110)
     private let hudView = HUDView(frame: NSRect(x: 0, y: 0, width: 160, height: 110))
     private let settingsStore: SettingsStore
 
@@ -2505,38 +3219,122 @@ final class HUDWindowController: NSWindowController, HUDPresenting {
         hudView.update(presentation)
     }
 
+    static func fallbackOrigin(visibleFrame: NSRect, panelSize: NSSize) -> NSPoint {
+        NSPoint(x: visibleFrame.maxX - panelSize.width - 20, y: visibleFrame.maxY - panelSize.height - 20)
+    }
+
+    static func restoredOrigin(saved: NSPoint?, visibleFrames: [NSRect], panelSize: NSSize) -> NSPoint {
+        if let saved {
+            let candidate = NSRect(origin: saved, size: panelSize)
+            if visibleFrames.contains(where: { $0.intersects(candidate) }) {
+                return saved
+            }
+        }
+        let fallbackFrame = visibleFrames.first ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        return fallbackOrigin(visibleFrame: fallbackFrame, panelSize: panelSize)
+    }
+
     private func restorePosition() {
         guard let window else { return }
         let settings = settingsStore.load()
-        if let x = settings.hud.savedOriginX, let y = settings.hud.savedOriginY {
-            window.setFrameOrigin(NSPoint(x: x, y: y))
-            if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(window.frame) }) {
-                return
-            }
-        }
-        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        window.setFrameOrigin(NSPoint(x: screen.maxX - 180, y: screen.maxY - 130))
+        let saved = settings.hud.savedOriginX.flatMap { x in settings.hud.savedOriginY.map { y in NSPoint(x: x, y: y) } }
+        let visibleFrames = NSScreen.screens.map(\.visibleFrame)
+        window.setFrameOrigin(Self.restoredOrigin(saved: saved, visibleFrames: visibleFrames, panelSize: Self.panelSize))
     }
 }
 ```
 
-- [ ] **Step 3: Add position persistence after drag**
+- [ ] **Step 6: Verify HUD tests and build**
 
-Add a window delegate or `windowDidMove` observer in `HUDWindowController` that saves `window.frame.origin` into `SettingsStore`. Verify by moving the HUD, quitting, relaunching, and checking that it restores.
+Run:
+
+```bash
+swift test --filter HUDWindowControllerTests
+swift test
+swift build
+```
+
+Expected: HUD positioning tests, full suite, and build pass.
+
+- [ ] **Step 7: Add position persistence after drag**
+
+In `Sources/WalkFlowMacApp/UI/HUDWindowController.swift`, change the class declaration from:
+
+```swift
+final class HUDWindowController: NSWindowController, HUDPresenting {
+```
+
+to:
+
+```swift
+final class HUDWindowController: NSWindowController, NSWindowDelegate, HUDPresenting {
+```
+
+Immediately after `super.init(window: panel)`, insert:
+
+```swift
+panel.delegate = self
+```
+
+Before the final closing brace of `HUDWindowController`, add:
+
+```swift
+func windowDidMove(_ notification: Notification) {
+    guard let window else { return }
+    var settings = settingsStore.load()
+    settings.hud.savedOriginX = window.frame.origin.x
+    settings.hud.savedOriginY = window.frame.origin.y
+    settingsStore.save(settings)
+}
+```
+
+Verify by moving the HUD, quitting, relaunching, and checking that it restores. Record the manual result in `review.md`.
 
 ### Task 10.2: Implement menu bar controller
 
 **Files:**
+- Create: `Tests/WalkFlowMacAppTests/MenuBarControllerTests.swift`
 - Create: `Sources/WalkFlowMacApp/UI/MenuBarController.swift`
+- Modify: `Sources/WalkFlowMacApp/App/AppDelegate.swift`
 
-- [ ] **Step 1: Create menu bar controller**
+- [ ] **Step 1: Write menu bar structure test**
+
+Create `Tests/WalkFlowMacAppTests/MenuBarControllerTests.swift`:
+
+```swift
+import XCTest
+@testable import WalkFlowMacApp
+
+final class MenuBarControllerTests: XCTestCase {
+    func testMenuContainsRequiredActions() {
+        XCTAssertEqual(
+            MenuBarController.requiredMenuTitles,
+            ["Enable", "Pause", "Show HUD", "Open Window", "Settings", "Quit"]
+        )
+    }
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter MenuBarControllerTests
+```
+
+Expected: FAIL because `MenuBarController` and `requiredMenuTitles` do not exist.
+
+- [ ] **Step 3: Create menu bar controller**
 
 Create `Sources/WalkFlowMacApp/UI/MenuBarController.swift`:
 
 ```swift
 import AppKit
 
-final class MenuBarController {
+final class MenuBarController: NSObject {
+    static let requiredMenuTitles = ["Enable", "Pause", "Show HUD", "Open Window", "Settings", "Quit"]
+
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private weak var appController: AppController?
     private weak var mainWindowController: MainWindowController?
@@ -2546,20 +3344,21 @@ final class MenuBarController {
         self.appController = appController
         self.mainWindowController = mainWindowController
         self.hudWindowController = hudWindowController
+        super.init()
         configure()
     }
 
     private func configure() {
         statusItem.button?.title = "✋"
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Enable", action: #selector(enable), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Pause", action: #selector(pause), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: Self.requiredMenuTitles[0], action: #selector(enable), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: Self.requiredMenuTitles[1], action: #selector(pause), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Show HUD", action: #selector(showHUD), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Open Window", action: #selector(openWindow), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Settings", action: #selector(openSettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: Self.requiredMenuTitles[2], action: #selector(showHUD), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: Self.requiredMenuTitles[3], action: #selector(openWindow), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: Self.requiredMenuTitles[4], action: #selector(openSettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: Self.requiredMenuTitles[5], action: #selector(quit), keyEquivalent: "q"))
         for item in menu.items {
             item.target = self
         }
@@ -2594,11 +3393,52 @@ final class MenuBarController {
 }
 ```
 
-- [ ] **Step 2: Build and run**
+- [ ] **Step 4: Wire AppDelegate after HUD and menu types exist**
+
+Replace `Sources/WalkFlowMacApp/App/AppDelegate.swift` with:
+
+```swift
+import AppKit
+import WalkFlowCore
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let appController = AppController()
+    private var mainWindowController: MainWindowController?
+    private var hudWindowController: HUDWindowController?
+    private var menuBarController: MenuBarController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let main = MainWindowController(appController: appController)
+        main.showWindow(nil)
+        main.window?.makeKeyAndOrderFront(nil)
+        mainWindowController = main
+
+        let hud = HUDWindowController(settingsStore: SettingsStore())
+        hud.show()
+        hudWindowController = hud
+        appController.hudPresenter = hud
+
+        menuBarController = MenuBarController(appController: appController, mainWindowController: main, hudWindowController: hud)
+
+        appController.refreshPermissions()
+        appController.configureCameraIfPermitted()
+        appController.startRecognition()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+}
+```
+
+- [ ] **Step 5: Build and run**
 
 Run:
 
 ```bash
+swift test --filter MenuBarControllerTests
+swift test
 swift build
 ./script/build_and_run.sh --verify
 ```
@@ -2617,7 +3457,7 @@ Expected: app launches with main window, HUD, and menu bar item.
 - Create: `Sources/WalkFlowMacApp/Resources/Lottie/dribbble.json`
 - Create: `Sources/WalkFlowMacApp/Resources/Lottie/infinity.json`
 - Create: `Sources/WalkFlowMacApp/Resources/Lottie/lock.json`
-- Create: `Docs/THIRD_PARTY_NOTICES.md`
+- Create: `docs/THIRD_PARTY_NOTICES.md`
 
 - [ ] **Step 1: Create fetch script**
 
@@ -2632,7 +3472,12 @@ WORK_DIR="$ROOT_DIR/.codex-artifacts/useanimations"
 TARGET_DIR="$ROOT_DIR/Sources/WalkFlowMacApp/Resources/Lottie"
 PACKAGE_VERSION="2.10.0"
 
-/bin/rm -rf "$WORK_DIR"
+if [[ -d "$WORK_DIR" ]]; then
+    case "$WORK_DIR" in
+        "$ROOT_DIR/.codex-artifacts/useanimations") /bin/rm -R "$WORK_DIR" ;;
+        *) echo "Refusing to remove unexpected work dir: $WORK_DIR" >&2; exit 2 ;;
+    esac
+fi
 /bin/mkdir -p "$WORK_DIR" "$TARGET_DIR"
 cd "$WORK_DIR"
 npm pack "react-useanimations@$PACKAGE_VERSION" --silent
@@ -2645,7 +3490,7 @@ tar -xzf "react-useanimations-$PACKAGE_VERSION.tgz"
 /bin/cp package/lib/infinity/infinity.json "$TARGET_DIR/infinity.json"
 /bin/cp package/lib/lock/lock.json "$TARGET_DIR/lock.json"
 
-cat > "$ROOT_DIR/Docs/THIRD_PARTY_NOTICES.md" <<'NOTICE'
+cat > "$ROOT_DIR/docs/THIRD_PARTY_NOTICES.md" <<'NOTICE'
 # Third Party Notices
 
 ## react-useanimations
@@ -2673,6 +3518,12 @@ Run:
 chmod +x script/fetch_useanimations_assets.sh
 ./script/fetch_useanimations_assets.sh
 ls Sources/WalkFlowMacApp/Resources/Lottie
+test -s Sources/WalkFlowMacApp/Resources/Lottie/alertTriangle.json
+test -s Sources/WalkFlowMacApp/Resources/Lottie/arrowDown.json
+test -s Sources/WalkFlowMacApp/Resources/Lottie/arrowUp.json
+test -s Sources/WalkFlowMacApp/Resources/Lottie/dribbble.json
+test -s Sources/WalkFlowMacApp/Resources/Lottie/infinity.json
+test -s Sources/WalkFlowMacApp/Resources/Lottie/lock.json
 ```
 
 Expected:
@@ -2692,7 +3543,7 @@ Run:
 
 ```bash
 npm view react-useanimations@2.10.0 license repository.url
-rg -n "react-useanimations|Lottie|MIT|Apache-2.0" Docs/THIRD_PARTY_NOTICES.md
+rg -n "react-useanimations|Lottie|MIT|Apache-2.0" docs/THIRD_PARTY_NOTICES.md
 ```
 
 Expected: npm prints `MIT` and the GitHub repository; notice file contains both packages.
@@ -2700,11 +3551,45 @@ Expected: npm prints `MIT` and the GitHub repository; notice file contains both 
 ### Task 11.2: Implement native Lottie status icon view
 
 **Files:**
-- Create: `Sources/WalkFlowMacApp/UI/LottieStatusIconView.swift`
+- Create: `Tests/WalkFlowMacAppTests/LottieStatusIconViewTests.swift`
+- Modify: `Sources/WalkFlowMacApp/UI/LottieStatusIconView.swift`
 
-- [ ] **Step 1: Create Lottie wrapper**
+- [ ] **Step 1: Write Lottie resource mapping tests**
 
-Create `Sources/WalkFlowMacApp/UI/LottieStatusIconView.swift`:
+Create `Tests/WalkFlowMacAppTests/LottieStatusIconViewTests.swift`:
+
+```swift
+import XCTest
+@testable import WalkFlowCore
+@testable import WalkFlowMacApp
+
+final class LottieStatusIconViewTests: XCTestCase {
+    func testResourceNamesMatchBundledUseAnimationsFiles() {
+        XCTAssertNil(LottieStatusIconView.resourceName(for: .none))
+        XCTAssertEqual(LottieStatusIconView.resourceName(for: .alertTriangle), "alertTriangle")
+        XCTAssertEqual(LottieStatusIconView.resourceName(for: .infinity), "infinity")
+        XCTAssertEqual(LottieStatusIconView.resourceName(for: .arrowUp), "arrowUp")
+        XCTAssertEqual(LottieStatusIconView.resourceName(for: .arrowDown), "arrowDown")
+        XCTAssertEqual(LottieStatusIconView.resourceName(for: .dribbble), "dribbble")
+        XCTAssertEqual(LottieStatusIconView.resourceName(for: .lock), "lock")
+        XCTAssertEqual(LottieStatusIconView.resourceName(for: .unlockOnce), "lock")
+    }
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter LottieStatusIconViewTests
+```
+
+Expected: FAIL because Phase 10's placeholder `LottieStatusIconView` does not expose the resource mapping and does not use native Lottie yet.
+
+- [ ] **Step 3: Replace placeholder with native Lottie wrapper**
+
+Replace `Sources/WalkFlowMacApp/UI/LottieStatusIconView.swift` with:
 
 ```swift
 import AppKit
@@ -2738,7 +3623,7 @@ final class LottieStatusIconView: NSView {
         }
         currentIcon = icon
 
-        guard let resource = resourceName(for: icon) else {
+        guard let resource = Self.resourceName(for: icon) else {
             animationView.stop()
             animationView.animation = nil
             animationView.isHidden = true
@@ -2763,7 +3648,7 @@ final class LottieStatusIconView: NSView {
         }
     }
 
-    private func resourceName(for icon: HUDIcon) -> String? {
+    static func resourceName(for icon: HUDIcon) -> String? {
         switch icon {
         case .none:
             return nil
@@ -2784,18 +3669,20 @@ final class LottieStatusIconView: NSView {
 }
 ```
 
-- [ ] **Step 2: Build and run**
+- [ ] **Step 4: Build and run**
 
 Run:
 
 ```bash
+swift test --filter LottieStatusIconViewTests
+swift test
 swift build
 ./script/build_and_run.sh --verify
 ```
 
-Expected: app launches and HUD renders without Lottie resource errors.
+Expected: Lottie mapping tests and full suite pass; app launches and HUD renders without Lottie resource errors.
 
-- [ ] **Step 3: Visual animation verification**
+- [ ] **Step 5: Visual animation verification**
 
 Open `https://useanimations.com/#explore` in a browser and compare these app states against original lottie-web behavior:
 
@@ -2818,8 +3705,41 @@ Record findings in `docs/tasks/001-gesture-control-macos-app-bootstrap/review.md
 **Files:**
 - Modify: `Sources/WalkFlowMacApp/UI/MainWindowController.swift`
 - Modify: `Sources/WalkFlowMacApp/App/AppController.swift`
+- Modify: `Tests/WalkFlowMacAppTests/AppControllerTests.swift`
 
-- [ ] **Step 1: Expose camera session for preview**
+- [ ] **Step 1: Add preview attachment test**
+
+Add this test method to `Tests/WalkFlowMacAppTests/AppControllerTests.swift`:
+
+```swift
+func testAttachPreviewAssignsCameraSessionToPreviewLayer() {
+    let camera = FakeCameraController()
+    let controller = AppController(
+        settingsStore: FakeSettingsStore(),
+        permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+        camera: camera,
+        eventOutput: RecordingControlEventOutput()
+    )
+    let preview = CameraPreviewView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+    preview.wantsLayer = true
+
+    controller.attachPreview(to: preview)
+
+    XCTAssertTrue(preview.previewLayer.session === camera.session)
+}
+```
+
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter AppControllerTests/testAttachPreviewAssignsCameraSessionToPreviewLayer
+```
+
+Expected: FAIL because `AppController.attachPreview(to:)` does not exist.
+
+- [ ] **Step 3: Expose camera session for preview**
 
 Add this method to `AppController`:
 
@@ -2829,7 +3749,7 @@ func attachPreview(to previewView: CameraPreviewView) {
 }
 ```
 
-- [ ] **Step 2: Attach preview in main window**
+- [ ] **Step 4: Attach preview in main window**
 
 In `MainWindowController.init`, after `previewView` is created, add:
 
@@ -2837,11 +3757,13 @@ In `MainWindowController.init`, after `previewView` is created, add:
 appController.attachPreview(to: previewView)
 ```
 
-- [ ] **Step 3: Run app and grant camera permission**
+- [ ] **Step 5: Run tests, app, and camera permission smoke**
 
 Run:
 
 ```bash
+swift test --filter AppControllerTests/testAttachPreviewAssignsCameraSessionToPreviewLayer
+swift test
 ./script/build_and_run.sh --verify
 ```
 
@@ -2853,7 +3775,18 @@ Expected: macOS prompts for Camera permission on first run. After permission is 
 - Modify: `Sources/WalkFlowMacApp/App/AppController.swift`
 - Modify: `script/build_and_run.sh`
 
-- [ ] **Step 1: Add unified logging**
+- [ ] **Step 1: Run RED telemetry check**
+
+Run before adding gesture HUD logging:
+
+```bash
+set -o pipefail
+./script/build_and_run.sh --telemetry 2>&1 | rg 'gestureHUD='
+```
+
+Expected: FAIL because `gestureHUD=` has not been logged yet. Stop the telemetry stream with `Ctrl-C` after confirming the missing log.
+
+- [ ] **Step 2: Add unified logging**
 
 Add logger to `AppController`:
 
@@ -2869,7 +3802,7 @@ When publishing output, log:
 logger.info("gestureHUD=\(hud.message, privacy: .public) icon=\(String(describing: hud.icon), privacy: .public)")
 ```
 
-- [ ] **Step 2: Run telemetry**
+- [ ] **Step 3: Run telemetry**
 
 Run:
 
@@ -2879,7 +3812,7 @@ Run:
 
 Expected: logs show gesture HUD transitions while the app runs.
 
-- [ ] **Step 3: Manual behavior checks**
+- [ ] **Step 4: Manual behavior checks**
 
 Perform these in front of the camera:
 
@@ -2929,7 +3862,17 @@ final class RecognitionMetricsTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Implement metrics**
+- [ ] **Step 2: Run RED**
+
+Run:
+
+```bash
+swift test --filter RecognitionMetricsTests
+```
+
+Expected: FAIL because `RecognitionMetrics` does not exist.
+
+- [ ] **Step 3: Implement metrics**
 
 Create `Sources/WalkFlowCore/Diagnostics/RecognitionMetrics.swift`:
 
@@ -2962,7 +3905,7 @@ public struct RecognitionMetrics: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 3: Verify metrics**
+- [ ] **Step 4: Verify metrics**
 
 Run:
 
@@ -3044,10 +3987,23 @@ Record camera usage string, bundle identifier, and signing state in `review.md`.
 
 - [ ] **Step 1: CPU and memory while recognition is enabled**
 
-Run app for 10 minutes with camera recognition enabled, then run:
+Run app with camera recognition enabled, then collect 60 samples over 10 minutes:
 
 ```bash
-ps -o pid,pcpu,rss,comm -c -x | rg '^ *[0-9]+ +[0-9.]+' | rg 'WalkFlowMac|COMMAND'
+mkdir -p .codex-artifacts/perf
+for i in $(seq 1 60); do
+    date '+%Y-%m-%dT%H:%M:%S%z'
+    ps -o pid,pcpu,rss,comm -c -x | awk '/WalkFlowMac/ { print $1, $2, $3, $4 }'
+    sleep 10
+done | tee .codex-artifacts/perf/walkflow-10min-samples.txt
+
+awk '
+    /^[0-9]/ { cpu += $2; rss = ($3 > rss ? $3 : rss); count += 1 }
+    END {
+        if (count == 0) { print "No WalkFlowMac samples found"; exit 1 }
+        printf "average_cpu=%.2f\nmax_rss_mb=%.1f\n", cpu / count, rss / 1024
+    }
+' .codex-artifacts/perf/walkflow-10min-samples.txt
 ```
 
 Pass gate:
@@ -3154,7 +4110,11 @@ swift test
 swift build
 ./script/build_and_run.sh --verify
 UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')"
-rg -n "SwiftUI|$UNFINISHED_PATTERN" Package.swift Sources Tests docs/tasks/001-gesture-control-macos-app-bootstrap
+if rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests; then
+    echo "SwiftUI usage found in source/test files" >&2
+    exit 1
+fi
+rg -n "$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap && exit 1 || true
 ```
 
 Expected:
@@ -3163,10 +4123,9 @@ Expected:
 swift test passes
 swift build passes
 Run verify passes
-rg finds no SwiftUI import or usage in source files and no unfinished placeholders
+No SwiftUI import or usage appears in source/test files
+No unfinished placeholders appear in task docs
 ```
-
-The `rg` command may find historic text that says "不使用 SwiftUI" in docs. That is acceptable. Any Swift source import or usage of SwiftUI is a blocker.
 
 - [ ] **Step 2: Review uncommitted diff**
 
@@ -3175,7 +4134,7 @@ Run:
 ```bash
 git status --short
 git diff --stat
-git diff -- Package.swift Sources Tests script .codex Docs docs/tasks/001-gesture-control-macos-app-bootstrap
+git diff -- Package.swift Sources Tests script .codex docs/THIRD_PARTY_NOTICES.md docs/tasks/001-gesture-control-macos-app-bootstrap
 ```
 
 Expected: only files in this plan changed.
@@ -3185,7 +4144,7 @@ Expected: only files in this plan changed.
 Commit the task-scoped implementation files after reviewing `git status --short`:
 
 ```bash
-git add Package.swift Sources Tests script .codex Docs docs/tasks/001-gesture-control-macos-app-bootstrap
+git add Package.swift Sources Tests script .codex docs/THIRD_PARTY_NOTICES.md docs/tasks/001-gesture-control-macos-app-bootstrap
 git commit -m "feat: bootstrap gesture control macOS app"
 ```
 
@@ -3200,13 +4159,14 @@ git commit -m "feat: bootstrap gesture control macOS app"
 Run:
 
 ```bash
-BASE_SHA=$(git rev-list --max-parents=0 HEAD)
+BASE_SHA="$(rg -o 'WALKFLOW_IMPL_BASE_SHA=[0-9a-f]+' docs/tasks/001-gesture-control-macos-app-bootstrap/progress.md | tail -n 1 | cut -d= -f2)"
+test -n "$BASE_SHA"
 HEAD_SHA=$(git rev-parse HEAD)
 printf 'BASE_SHA=%s\nHEAD_SHA=%s\n' "$BASE_SHA" "$HEAD_SHA"
 git diff --stat "$BASE_SHA..$HEAD_SHA"
 ```
 
-Expected: range covers the full implementation series that bootstraps the app.
+Expected: range covers the full implementation series that bootstraps the app and excludes earlier planning-only commits. If `progress.md` does not contain `WALKFLOW_IMPL_BASE_SHA`, stop and reconstruct it from the first implementation commit before requesting final review.
 
 - [ ] **Step 2: Run smoke test**
 

@@ -66,10 +66,16 @@
 - 已修正 `plan.md` 的 Build macOS Apps run script / Codex Run action 计划，使其对齐 `script/build_and_run.sh` + `.codex/environments/environment.toml` 的 canonical 形态。
 - 已完成首次本地提交：`docs: initialize WalkFlow-Mac planning docs`。
 - 已完成首次 push：本地 `main` 已推送到 `origin/main`，并设置 upstream 跟踪。
+- 已按用户要求对 `plan.md` 执行多轮计划审计和加固，目标是消除可预见的阶段执行漏洞、TDD 漏洞、编译断点和验收证据漏洞。
+- 已强化 `plan.md` 的 TDD 覆盖矩阵，并补充 `CameraPreviewViewTests`、`VisionHandPoseProviderTests`、`MainWindowControllerTests`、`MenuBarControllerTests`、`LottieStatusIconViewTests` 等明确测试入口。
+- 已修复 `plan.md` 中 Phase 9 过早装配 `AppDelegate` 导致阶段不可编译的问题，将完整 AppKit 启动装配后移到 HUD/menu 类型存在后的 Phase 10。
+- 已修复 `plan.md` 中 Phase 7、Phase 12 等生产代码先于测试的问题，补充 camera preview、Vision joint mapping、preview session attach、telemetry RED 检查等红绿闭环。
+- 已修复 `plan.md` 中若干实现片段风险：`CameraControlling` 暴露 `AVCaptureSession`、连续滚动手势变化时发出 `stopContinuousScroll`、`indexDown` 分类不复用向上伸直判断、菜单栏 controller 继承 `NSObject`。
+- 已将资源脚本和构建脚本计划中的删除操作改成受控路径清理，并将 `.worktrees/`、`worktrees/` 加入 `.gitignore`，避免后续 subagent worktree 被误跟踪。
 
 ## 当前状态
 
-Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `main`，跟踪 `origin/main`。最新规则下，`AGENTS.md`、`.superpowers/` 和 `docs/superpowers/` 只保留本地，不再由 Git 跟踪。后续实现必须按 `plan.md` 中的 Superpowers TDD/Subagent/Review gate 和 Build macOS Apps 能力映射执行。
+Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `main`，跟踪 `origin/main`。最新规则下，`AGENTS.md`、`.superpowers/` 和 `docs/superpowers/` 只保留本地，不再由 Git 跟踪。`plan.md` 已完成第二轮高强度加固，后续实现必须按其中的 Superpowers TDD/Subagent/Review gate、Build macOS Apps 能力映射和每阶段自动化/人工验收门槛执行。
 
 ## 下一步
 

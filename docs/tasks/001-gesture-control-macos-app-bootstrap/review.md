@@ -25,6 +25,8 @@
 - 用户已选择 `AppKit + 原生 Lottie macOS renderer`，不用 WebView 作为默认实现路径；风险是原生 renderer 与 useAnimations 网站的 `lottie-web` 表现可能有细微差异。
 - 后续验证必须包含原始 useAnimations/lottie-web 动效与原生 Lottie macOS renderer 的视觉对比；如果存在差异，应优先调整播放区间、方向、循环和速度控制。
 - 用户最新确认 `AGENTS.md` 和 Superpowers 相关文档/内容不希望由 Git 记录；`.gitignore` 已调整为忽略 `AGENTS.md`、`.superpowers/` 和 `docs/superpowers/`。
+- SwiftPM 对 executable target 的测试导入能力可能随工具链表现不同；`plan.md` 已明确如果 `WalkFlowMacAppTests` 不能直接导入 executable target，不允许删除测试或退化为手测，必须拆出 `WalkFlowMacAppSupport` library target 保持自动化测试覆盖。
+- 后续使用 subagent/worktree 并行开发时，`.worktrees/` 和 `worktrees/` 必须保持忽略，避免把临时工作树或并行开发产物误提交。
 
 ## Review 发现
 
@@ -39,6 +41,12 @@
 - 当前仓库跟踪内容已排除 `AGENTS.md`、`.superpowers/` 和 `docs/superpowers/`；这些文件保留在本地。
 - 已将用户最新流程要求写入 `plan.md`：后续所有开发必须使用 Superpowers TDD；默认采用 Subagent-Driven Development；并行 agent 只用于独立域、非重叠文件或独立 worktree；每阶段必须 requesting-code-review；最终必须包含 full review、Smoke 测试和端到端测试。
 - 已将 Build macOS Apps 能力转化为计划内流程：SwiftPM 负责 package/build/test；build-run-debug 负责 `.app` bundle 启动脚本和 Codex Run action；test-triage 负责失败分类；telemetry 负责 OSLog 验证；signing-entitlements 负责 bundle/signing/trust 检查；packaging-notarization 仅用于未来分发准备；SwiftUI-only 技能只吸收原则，不引入 SwiftUI API。
+- 本轮计划审计发现并修复 Phase 9/10 阶段边界问题：原计划在 Phase 9 过早把 `AppDelegate` 连接到 Phase 10 才创建的 HUD/menu 类型，会造成阶段结束不可编译；现已改为 Phase 9 只完成主窗口 UI 和测试，Phase 10 类型齐备后再装配启动路径。
+- 本轮计划审计发现并修复 TDD 覆盖不足：Phase 5、Phase 7、Phase 12、Phase 13 均补充了明确 RED 命令或验证 harness；Camera preview、Vision joint mapping、preview session attach、Lottie resource mapping、menu structure 均有自动化测试入口。
+- 本轮计划审计发现并修复实现片段一致性问题：`CameraControlling` 现在暴露 `AVCaptureSession`，fake camera 同步实现；`AppController` 拆出 `handleObservation(_:)` 以测试 disabled/paused/permission-blocked 事件抑制；`MenuBarController` 继承 `NSObject` 以匹配 AppKit target/action；`LottieStatusIconView` 由 Phase 10 占位实现过渡到 Phase 11 原生 Lottie renderer。
+- 本轮计划审计发现并修复手势逻辑 bug：连续滚动时手势变化必须发出 `stopContinuousScroll`，不能先清空连续状态；`indexDown` 分类不能复用向上伸直判断，测试 fixture 和分类器逻辑已同步强化。
+- 本轮计划审计发现并修复验收证据不足：性能门槛由单次 `ps` 快照改为 10 分钟 60 次采样并计算平均 CPU / 最大 RSS；最终 review range 改为使用 Phase 0 记录的 `WALKFLOW_IMPL_BASE_SHA`，避免把规划提交混入实现审查范围。
+- 本轮计划审计发现并修复危险/误导性脚本口径：`/bin/rm -rf` 删除改为受控路径清理；`Docs/` 路径统一为 `docs/THIRD_PARTY_NOTICES.md`；最终 SwiftUI 检查拆分为源码阻断检查与文档占位检查，避免把“禁止 SwiftUI”的文档文字误判为源代码违规。
 
 ## 验证命令和结果
 
@@ -55,6 +63,7 @@
 - 已执行 `git ls-remote --heads origin main`，确认远端 `refs/heads/main` 存在。
 - 已执行 `git rm --cached -r AGENTS.md .superpowers docs/superpowers`，仅从 Git 索引移除这些路径，本地文件未删除。
 - 已执行 Superpowers 和 Build macOS Apps 技能说明审阅，并据此更新 `plan.md` 的执行流程。
+- 本轮已执行计划文本审计搜索，覆盖危险删除、路径大小写、不可编译提示、占位语、关键测试入口和任务文档一致性；已执行 `git diff --check`、`.gitignore`/tracked-local-only 验证、源码 SwiftUI 检查和最终 `rg` 审计。搜索命中仅保留在 `review.md` / `task.md` 的历史风险说明中，不代表计划仍包含危险执行命令或未完成占位。
 
 ## 跳过的检查
 
