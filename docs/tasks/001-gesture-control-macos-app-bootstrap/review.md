@@ -39,6 +39,13 @@
 - 2026-06-15 Phase 1 code review gate：reviewer 未发现 Critical；发现 1 个 Important，指出“跳过的检查”仍写着未运行 build/test/lint，已修正。Minor 发现 `Info.plist` 直接复制时 `$(DEVELOPMENT_LANGUAGE)` 会保留字面量，已改为 `en`；签名描述已改为更准确的“本地 debug 可启动，尚非完整签名 bundle”。`Lottie.framework` 当前复制到 `Contents/MacOS/` 是为了匹配 SwiftPM executable 当前 `@loader_path` 搜索路径，后续 packaging/signing 阶段仍需评估是否迁移到标准 `Contents/Frameworks` 并同步 rpath/signing。
 - 2026-06-15 Phase 2 实现发现：当前 core domain/settings 仍是纯 Swift value types 和 `UserDefaults` 持久化，不触碰 AppKit UI、摄像头、权限请求、系统事件注入或外部服务。
 - 2026-06-15 Phase 2 code review gate：reviewer 未发现 Critical/Important。Minor 指出验证证据可更完整，已补跑并记录 `swift test --filter DomainTypesTests` focused GREEN 和阶段矩阵命令 `swift test --filter WalkFlowCoreTests`。
+- 2026-06-15 Phase 3 实现发现：`Clock` 名称与 Swift 标准库 `Clock` 同名；RED 阶段测试先解析到标准库 `Clock` 并失败，新增 `WalkFlowCore.Clock` 后测试通过。当前测试通过说明模块导入下未产生歧义，但后续若外部模块同时显式使用 Swift Concurrency `Clock`，可能需要通过 `WalkFlowCore.Clock` 进行限定。
+- 2026-06-15 Phase 3 code review gate 初审：发现 1 个 Critical 和 3 个 Important。Critical：`openPalm` 持续保持会刷新 `lastActionAt`，导致 5 秒控制窗口无法按无动作退出。Important：单次滚动未 latch；第二次 OK command 后 mode 未回 `standby`；语音输入期间释放 OK 成 openPalm 后 HUD 提前回 `Ready` 而不是保持 Dribbble。
+- 2026-06-15 Phase 3 review 修复：新增失败测试覆盖上述缺口，随后修复状态机。当前行为为：openPalm 持续不刷新 ready window；过期后下一帧不会立即重新 ready；index up/down 在 300-700ms 之间只发一次 single step；第二次 OK 后输出 mode 为 `standby` 且 icon 为 `.none`；语音输入期间释放 OK 后继续显示 `.dribbble`。
+- 2026-06-15 Phase 3 re-review 发现 1 个 Important：语音输入期间超过 5 秒后，普通 ready timeout 会清空 Dribbble 状态并使第二次 `OK` 无法结束语音输入。已补充 RED 测试并修复：`isVoiceInputActive` 为 true 时不应用普通 ready timeout，保留 `.dribbble` 和 `.ready`，直到第二次 `OK` 触发右侧 `Command` 后回 `standby`。
+- 2026-06-15 Phase 3 第二次 re-review 发现 1 个 Important：语音输入 active 后，`indexUp/indexDown` 仍会走 `scrollOutput`，发滚动 action 并把 HUD 切到箭头图标，违背 Command/Dribbble 需保持到第二次 OK 的要求。已补充 RED 测试并修复：`mode == .ready && isVoiceInputActive == true` 时，除 `okPinch`、`handLost`、`fist` 外的普通手势不发控制 action，HUD 保持 `.dribbble`。
+- 2026-06-15 Phase 3 第三次 re-review 发现 1 个 Important：语音输入 active 时，第二次 `OK` 起手但未稳定到 300ms 或仍在 cooldown 内时，`commandOutput` 会返回空 icon，短暂清掉 Dribbble。已补充 RED 测试并修复：`isVoiceInputActive == true` 时，OK cooldown / pending / latched 分支均返回 `.dribbble`，只有第二次 `OK` 成功触发右侧 `Command` 后才回 `standby` / 空 icon。
+- 2026-06-15 Phase 3 最终 re-review gate：reviewer 只读复审确认无 Critical、Important、Minor；此前所有 Critical / Important 均已关闭。
 - 设计规格自审发现并修正了三类可执行性歧义：`Vision` 达标标准、`MediaPipe` 进入门槛、第一版性能门槛。
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
@@ -100,6 +107,31 @@
   - `swift test --filter WalkFlowCoreTests`：通过，6 个 WalkFlowCore XCTest，0 failures。
   - Phase 2 full `swift test`：通过，7 个 XCTest，0 failures。
   - `swift build`：通过，`Build complete`。
+- 2026-06-15 Phase 3 TDD 和验证：
+  - `swift test --filter GestureStateMachineTests` RED：失败原因符合预期，`GestureStateMachine` 不存在；测试中的 `Clock` 先解析到 Swift 标准库 `Clock`，提示 `TestClock` 不符合协议。
+  - 新增 `Clock` / `SystemClock` 和 `GestureStateMachine` 后，`swift test --filter GestureStateMachineTests`：通过，7 个 XCTest，0 failures。
+  - Phase 3 full `swift test`：通过，13 个 XCTest，0 failures。
+  - `swift build`：通过，`Build complete`。
+  - Phase 3 code review 后新增缺口测试，`swift test --filter GestureStateMachineTests` RED：失败 6 个断言，覆盖 openPalm 刷新窗口、single scroll 重复、Dribbble 释放丢失和第二次 OK 后 mode 未回 standby。
+  - 修复后 `swift test --filter GestureStateMachineTests`：通过，9 个 XCTest，0 failures。
+  - 修复后 full `swift test`：通过，15 个 XCTest，0 failures。
+  - 修复后 `swift build`：通过，`Build complete`。
+  - Phase 3 re-review 后新增 `testCommandHUDPersistsPastReadyTimeoutUntilSecondCommand`，先执行 `swift test --filter GestureStateMachineTests/testCommandHUDPersistsPastReadyTimeoutUntilSecondCommand` 得到预期 RED：3 个断言失败，分别为 mode 从期望 `ready` 变为 `standby`、icon 从期望 `dribbble` 变为 `none`、第二次 `OK` 未产生 `pressRightCommand`。
+  - 修复后同一 focused test：通过，1 个 XCTest，0 failures。
+  - 修复后 `swift test --filter GestureStateMachineTests`：通过，10 个 XCTest，0 failures。
+  - 修复后 full `swift test`：通过，16 个 XCTest，0 failures。
+  - 修复后 `swift build`：通过，`Build complete`。
+  - Phase 3 第二次 re-review 后新增 `testVoiceInputActiveSuppressesScrollAndKeepsCommandHUD`，先执行 `swift test --filter GestureStateMachineTests/testVoiceInputActiveSuppressesScrollAndKeepsCommandHUD` 得到预期 RED：4 个断言失败，分别为 `indexUp` / `indexDown` 发出 single scroll action 且 HUD 变为箭头。
+  - 修复后同一 focused test：通过，1 个 XCTest，0 failures。
+  - 修复后 `swift test --filter GestureStateMachineTests`：通过，11 个 XCTest，0 failures。
+  - 修复后 full `swift test`：通过，17 个 XCTest，0 failures。
+  - 修复后 `swift build`：通过，`Build complete`。
+  - `git diff --check`：通过，无 whitespace error 输出。
+  - Phase 3 第三次 re-review 后新增 `testVoiceInputActiveKeepsCommandHUDDuringSecondOKPendingAndCooldown`，先执行 `swift test --filter GestureStateMachineTests/testVoiceInputActiveKeepsCommandHUDDuringSecondOKPendingAndCooldown` 得到预期 RED：2 个断言失败，分别为 OK cooldown 和第二次 OK pending 帧的 icon 从期望 `.dribbble` 变为 `.none`。
+  - 修复后同一 focused test：通过，1 个 XCTest，0 failures。
+  - 修复后 `swift test --filter GestureStateMachineTests`：通过，12 个 XCTest，0 failures。
+  - 修复后 full `swift test`：通过，18 个 XCTest，0 failures。
+  - 修复后 `swift build`：通过，`Build complete`。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。

@@ -115,9 +115,22 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 已执行 Phase 2 focused tests、`swift test` 和 `swift build`，结果写入 `review.md`。
 - 已完成 Phase 2 code review gate：reviewer 未发现 Critical/Important；指出验证证据可更完整，已补跑 `swift test --filter DomainTypesTests` 和 `swift test --filter WalkFlowCoreTests` 并记录。
 
+### 2026-06-15 Phase 3 Gesture State Machine 进度
+
+- 已完成 Task 3.1 state machine TDD：
+  - RED：替换 `GestureStateMachineTests` 后，focused test 因 `GestureStateMachine` / 项目 `Clock` 类型不存在失败。
+  - GREEN：新增 `Clock` / `SystemClock` 和 `GestureStateMachine`，覆盖 ready 进入/过期、单次/连续滚动、连续滚动手势变化停止、OK 捏合右侧 Command latch/cooldown、握拳停止和 hand lost 红点退出。
+- Phase 3 code review 发现 1 个 Critical 和 3 个 Important：openPalm 会刷新 ready 窗口、单次滚动未 latch、第二次 OK 后未退出 ready、语音输入期间释放 OK 后 Dribbble 状态丢失。
+- 已按 TDD 补充失败测试并修复状态机：openPalm 持续不刷新 5 秒窗口，单次滚动只触发一次，第二次 OK 后 mode 回 `standby`，语音输入期间释放成 openPalm 仍保持 Dribbble。
+- Phase 3 re-review 发现 1 个 Important：语音输入期间超过 5 秒 ready window 后，Dribbble 状态会被普通超时清空，且无法再用第二次 `OK` 结束语音输入。已按 TDD 补充 `testCommandHUDPersistsPastReadyTimeoutUntilSecondCommand` 并修复：语音输入会话期间不应用普通 ready timeout，直到第二次 `OK` 触发右侧 `Command` 后回到 `standby`。
+- Phase 3 第二次 re-review 发现 1 个 Important：语音输入 active 后，普通 `indexUp` / `indexDown` 仍会触发滚动并覆盖 Dribbble HUD。已按 TDD 补充 `testVoiceInputActiveSuppressesScrollAndKeepsCommandHUD` 并修复：语音输入会话期间，除第二次 `OK`、`handLost`、`fist` 外，普通手势不发控制 action，HUD 保持 Dribbble。
+- Phase 3 第三次 re-review 发现 1 个 Important：第二次 `OK` 起手但未稳定到 300ms、或第一次 `OK` 后仍在 cooldown 内时，HUD 会短暂清成空白。已按 TDD 补充 `testVoiceInputActiveKeepsCommandHUDDuringSecondOKPendingAndCooldown` 并修复：语音输入会话期间的 `OK` cooldown / pending 帧也保持 Dribbble，直到第二次 `OK` 成功触发后回到 `standby`。
+- Phase 3 最终 re-review 已通过：reviewer 确认无 Critical / Important / Minor，之前所有 Critical / Important 均已关闭。
+- 已重新执行 `swift test --filter GestureStateMachineTests`、`swift test` 和 `swift build`，结果写入 `review.md`。
+
 ## 下一步
 
-完成 Phase 2 code review gate 和 checkpoint commit；随后继续进入 Phase 3 gesture state machine。
+完成 Phase 3 checkpoint commit；随后继续进入 Phase 4 gesture classifier。
 
 ## 阻塞
 
