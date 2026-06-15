@@ -59,12 +59,17 @@
 - 用户最新确认 `AGENTS.md` 和 Superpowers 相关文档/内容不希望由 Git 记录。
 - 已调整 `.gitignore`：忽略 `AGENTS.md`、`.superpowers/` 和 `docs/superpowers/`。
 - 已从 Git 索引移除 `AGENTS.md`、`.superpowers/` 和 `docs/superpowers/`，文件仍保留在本地。
+- 用户确认后续开发流程必须最大化使用 Superpowers：所有开发使用 TDD，使用 Subagent/并行 agent 提升效率，每阶段结束后进行高强度 requesting-code-review 和细致测试验收，最终验收包含完整 review、Smoke 测试和端到端测试。
+- 已读取并吸收 Superpowers `test-driven-development`、`subagent-driven-development`、`dispatching-parallel-agents`、`requesting-code-review`、`verification-before-completion`、`using-git-worktrees`、`finishing-a-development-branch` 技能要求。
+- 已读取并分析 Build macOS Apps 相关能力：`swiftpm-macos`、`build-run-debug`、`test-triage`、`telemetry`、`signing-entitlements`、`packaging-notarization`、`window-management`、`appkit-interop`、`swiftui-patterns`、`view-refactor`、`liquid-glass`。
+- 已优化 `plan.md`：新增强制 TDD gate、Subagent/并行 agent 执行模型、每阶段 acceptance gate、最终验收 gate，以及 Build macOS Apps 能力矩阵和阶段映射。
+- 已修正 `plan.md` 的 Build macOS Apps run script / Codex Run action 计划，使其对齐 `script/build_and_run.sh` + `.codex/environments/environment.toml` 的 canonical 形态。
 - 已完成首次本地提交：`docs: initialize WalkFlow-Mac planning docs`。
 - 已完成首次 push：本地 `main` 已推送到 `origin/main`，并设置 upstream 跟踪。
 
 ## 当前状态
 
-Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `main`，跟踪 `origin/main`。最新规则下，`AGENTS.md`、`.superpowers/` 和 `docs/superpowers/` 只保留本地，不再由 Git 跟踪。
+Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `main`，跟踪 `origin/main`。最新规则下，`AGENTS.md`、`.superpowers/` 和 `docs/superpowers/` 只保留本地，不再由 Git 跟踪。后续实现必须按 `plan.md` 中的 Superpowers TDD/Subagent/Review gate 和 Build macOS Apps 能力映射执行。
 
 ## 下一步
 

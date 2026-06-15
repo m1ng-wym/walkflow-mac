@@ -1,6 +1,6 @@
 # WalkFlow-Mac App Bootstrap Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Project rule override: local `git commit` does not require additional user approval; `git push`, deploy, and destructive git operations must stop for explicit user confirmation. Destructive git operations are prohibited by default.
+> **For agentic workers:** REQUIRED SUB-SKILLS: Use `superpowers:test-driven-development`, `superpowers:subagent-driven-development`, `superpowers:dispatching-parallel-agents`, `superpowers:requesting-code-review`, and `superpowers:verification-before-completion` while executing this plan. Use Build macOS Apps skills as mapped below for SwiftPM, build/run/debug, test triage, telemetry, signing, packaging, and window behavior verification. Steps use checkbox (`- [ ]`) syntax for tracking. Project rule override: local `git commit` does not require additional user approval; `git push`, deploy, and destructive git operations must stop for explicit user confirmation. Destructive git operations are prohibited by default.
 
 **Goal:** Build the first AppKit-only macOS app bootstrap for `WalkFlow-Mac`: camera preview, Vision hand-pose recognition, gesture classification, state machine, scroll/right-Command event output, menu bar controls, pinned HUD, permissions, settings, and verification hooks.
 
@@ -24,6 +24,81 @@
 - Do not push or deploy without asking the user first.
 - Do not run destructive git operations such as `git reset --hard`, `git clean`, force-push, force-overwrite, or rollback of unconfirmed work. If the user explicitly asks for one, stop and reconfirm exact scope before taking action.
 - Prefer `rg`, `swift test`, `swift build`, and `./script/build_and_run.sh` as the working commands.
+
+## Mandatory Superpowers Workflow
+
+### TDD gate
+
+- Every feature, bug fix, refactor, behavior change, and app-layer integration must use `superpowers:test-driven-development`.
+- No production Swift/AppKit code may be written before a failing test or failing verification harness exists for the behavior being implemented.
+- The required micro-cycle is:
+  1. Write the narrow failing XCTest, integration test, or verification harness.
+  2. Run the smallest command that proves RED.
+  3. Confirm the failure is expected and caused by missing behavior, not a typo or broken setup.
+  4. Write the minimal production code needed for GREEN.
+  5. Run the focused test and then the wider relevant suite.
+  6. Refactor only while tests stay green.
+- If a task in this plan appears to create production code before tests, the implementer must stop, split that task into RED/GREEN/REFACTOR micro-steps, and record the adjustment in `progress.md` before coding.
+- For app surfaces that are hard to unit test directly, use the smallest reliable substitute: controller/service tests first, then `./script/build_and_run.sh --verify`, telemetry assertions, permission-state verification, and manual smoke steps recorded in `review.md`.
+- Build scripts, `.codex` environment files, and resource-fetch scripts are configuration tasks. They still require a verification command before claiming success, but they do not justify skipping TDD for adjacent production code.
+
+### Subagent and parallelization model
+
+- Default execution model is `superpowers:subagent-driven-development`, not inline implementation.
+- The controller must extract the full task text and provide focused context to subagents. Subagents must not be asked to infer requirements from the whole conversation.
+- Each implementation task uses this loop:
+  1. Implementer subagent executes the TDD micro-cycles, tests, commits, and self-reviews.
+  2. Spec-compliance reviewer subagent checks actual code against the task requirements.
+  3. Code-quality reviewer subagent uses `superpowers:requesting-code-review` against the task git range.
+  4. Critical and Important findings are fixed and re-reviewed before the next task starts.
+- Use `superpowers:dispatching-parallel-agents` for independent workstreams, especially research, test design, failure triage, telemetry/signing investigation, documentation review, and non-overlapping implementation in separate worktrees.
+- Do not run parallel implementation subagents in the same working tree when they can touch the same files or shared build state.
+- Parallel implementation is allowed only when one of these is true:
+  - file ownership is disjoint and explicitly listed in the prompts; or
+  - each implementer works in a separate ignored worktree created via `superpowers:using-git-worktrees`, followed by controller-led integration and full test verification.
+- After parallel agents return, the controller must review summaries, inspect diffs, check for conflicts, run the full relevant suite, and only then integrate or commit.
+
+### Phase acceptance gate
+
+At the end of every phase:
+
+- Run the phase's focused tests plus `swift test` unless the package is not bootstrapped yet.
+- Run `swift build` after source or package changes.
+- Run `./script/build_and_run.sh --verify` once the run script exists and the phase touches app launch, AppKit UI, menu bar, HUD, camera, permissions, event output, or resources.
+- Use Build macOS Apps `test-triage` whenever any test fails; classify build failure, assertion failure, crash, async flake, fixture issue, entitlement issue, or host-app issue.
+- Request high-intensity code review with `superpowers:requesting-code-review` for the whole phase git range.
+- Record commands, outputs, skipped checks, residual risk, and review findings in `review.md`.
+- Do not mark a phase complete while any Critical or Important review issue remains open.
+
+### Final acceptance gate
+
+The final closure must include:
+
+- Full `swift test`.
+- Full `swift build`.
+- `./script/build_and_run.sh --verify`.
+- Smoke test: app launches as a foreground `.app`, main window appears, menu bar item appears, HUD can show/hide, and no SwiftUI symbols are introduced.
+- End-to-end manual test: camera permission flow, open-palm ready window, index-up/down scroll, fist stop, OK pinch right-Command path, hand-lost red-dot path, menu bar Enable/Pause/Open Window/Settings/Quit paths.
+- Build macOS Apps telemetry/log verification for key AppKit actions.
+- Signing/entitlements inspection for the staged app bundle.
+- Final `superpowers:requesting-code-review` across the full implementation range.
+- Final `superpowers:verification-before-completion` evidence before any completion claim.
+
+## Build macOS Apps Capability Plan
+
+| Build macOS Apps skill | How this project will use it | Phases |
+| --- | --- | --- |
+| `swiftpm-macos` | Treat `Package.swift` as the package-first entrypoint. Discover library/executable/test products, run `swift build`, run focused `swift test --filter ...`, and explain package graph or linker failures precisely. | 1-15 |
+| `build-run-debug` | Create one project-local `script/build_and_run.sh` and `.codex/environments/environment.toml`. Launch the SwiftPM GUI app as a staged `.app` bundle, never as a raw executable. Use `--verify`, `--logs`, `--telemetry`, and `--debug` as the standard run/debug surface. | 1, 9-15 |
+| `test-triage` | When tests fail, narrow to the smallest failing target/case and classify failure category before changing code. Use this after every RED/GREEN failure that is not the expected RED. | all implementation phases |
+| `telemetry` | Add lightweight `OSLog.Logger` categories for `AppLifecycle`, `MenuBar`, `HUD`, `Camera`, `Vision`, `Gesture`, `Events`, `Permissions`, `Settings`, and `Performance`. Verify logs with `./script/build_and_run.sh --telemetry`; do not log frames, raw user content, secrets, or private data. | 6-15 |
+| `signing-entitlements` | Inspect the staged `.app` with `plutil`, `codesign -dvvv --entitlements :-`, and `spctl` when launch, permission, sandbox, trust, or event-injection behavior smells like signing/entitlements rather than code. | 1, 6, 14, 15 |
+| `packaging-notarization` | Use only for distribution readiness later. Do not present notarization as required for local debug runs. In this plan, only record bundle-structure and signing prerequisites needed to keep a future packaging path clean. | 14-15 |
+| `window-management` | Skill content is SwiftUI-oriented, so do not use SwiftUI APIs. Translate the applicable verification ideas into AppKit checks for `NSWindow`/`NSPanel`: launch behavior, activation, drag regions, placement, restoration, full-screen space behavior, multi-display behavior, and auto-hidden menu bar behavior. | 9-15 |
+| `appkit-interop` | The bridge guidance is not directly used because this app is AppKit-only. Reuse the boundary discipline: keep AppKit ownership explicit, avoid global `NSWindow` sprawl, and isolate imperative edges into controllers such as `HUDWindowController`, `MenuBarController`, and `MainWindowController`. | 8-15 |
+| `swiftui-patterns` | Not directly applicable because SwiftUI is banned. Reuse only the desktop-product principles: explicit main window/settings/menu roles, keyboard/menu affordances, file decomposition, and small focused surfaces. | planning/review only |
+| `view-refactor` | Not directly applicable because SwiftUI is banned. Reuse the file-responsibility checklist during AppKit review: split oversized controllers/views, keep models/stores/services separate, and keep app entrypoint minimal. | review gates |
+| `liquid-glass` | Not directly applicable because it is SwiftUI/Liquid Glass specific. Do not add SwiftUI or Liquid Glass APIs. Use only the caution against custom chrome that harms native macOS usability. | visual review only |
 
 ## Planned File Structure
 
@@ -107,17 +182,24 @@ Current branch: main
 
 `git status --short --branch` must show the current branch as `main`. The `find` command should show no app project before app bootstrap begins. If it shows an app project, stop and inspect before creating new files.
 
-- [ ] **Step 2: Confirm implementation mode**
+- [ ] **Step 2: Confirm mandatory execution model**
 
-Ask the user to choose execution mode after this plan is accepted:
+Before implementation starts, confirm the execution controller has loaded these skills and will use them as hard gates:
 
 ```text
-Plan is ready in docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md.
-Execution options:
-1. Subagent-driven implementation
-2. Inline implementation in this thread
-Which mode should I use?
+superpowers:test-driven-development
+superpowers:subagent-driven-development
+superpowers:dispatching-parallel-agents
+superpowers:requesting-code-review
+superpowers:verification-before-completion
+build-macos-apps:swiftpm-macos
+build-macos-apps:build-run-debug
+build-macos-apps:test-triage
+build-macos-apps:telemetry
+build-macos-apps:signing-entitlements
 ```
+
+Expected: no implementation begins until the controller has confirmed those skills are loaded for the execution turn. Inline implementation is not the default path for this project.
 
 - [ ] **Step 3: Commit and destructive-git gate**
 
@@ -129,6 +211,17 @@ git diff --stat
 ```
 
 Only commit task-scoped files. Do not push. Do not run destructive git operations.
+
+- [ ] **Step 4: Confirm local-only agent artifacts stay untracked**
+
+Run:
+
+```bash
+git check-ignore -v AGENTS.md .superpowers/ docs/superpowers/
+git ls-files AGENTS.md .superpowers docs/superpowers
+```
+
+Expected: `git check-ignore` shows all three paths are ignored by `.gitignore`; `git ls-files` prints no tracked files for those paths.
 
 ## Phase 1: Bootstrap Buildable AppKit Project
 
@@ -184,7 +277,33 @@ let package = Package(
 )
 ```
 
-- [ ] **Step 2: Create the smallest core type**
+- [ ] **Step 2: Write the first failing core test**
+
+Create `Tests/WalkFlowCoreTests/GestureStateMachineTests.swift` before creating `GestureTypes.swift`:
+
+```swift
+import XCTest
+@testable import WalkFlowCore
+
+final class GestureStateMachineTests: XCTestCase {
+    func testGestureKindEquatableSmoke() {
+        XCTAssertEqual(GestureKind.openPalm, GestureKind.openPalm)
+        XCTAssertNotEqual(GestureKind.openPalm, GestureKind.fist)
+    }
+}
+```
+
+- [ ] **Step 3: Run RED**
+
+Run:
+
+```bash
+swift test --filter GestureStateMachineTests/testGestureKindEquatableSmoke
+```
+
+Expected: FAIL because `GestureKind` does not exist yet. If it passes, stop and rewrite the test so it proves missing behavior.
+
+- [ ] **Step 4: Create the smallest core type**
 
 Create `Sources/WalkFlowCore/Domain/GestureTypes.swift`:
 
@@ -202,7 +321,17 @@ public enum GestureKind: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 3: Create the AppKit entry point**
+- [ ] **Step 5: Run GREEN for the core test**
+
+Run:
+
+```bash
+swift test --filter GestureStateMachineTests/testGestureKindEquatableSmoke
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Create the AppKit entry point**
 
 Create `Sources/WalkFlowMacApp/main.swift`:
 
@@ -249,7 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 ```
 
-- [ ] **Step 4: Create bundle metadata**
+- [ ] **Step 7: Create bundle metadata**
 
 Create `Sources/WalkFlowMacApp/Resources/Info.plist`:
 
@@ -278,23 +407,7 @@ Create `Sources/WalkFlowMacApp/Resources/Info.plist`:
 </plist>
 ```
 
-- [ ] **Step 5: Add the first compile test**
-
-Create `Tests/WalkFlowCoreTests/GestureStateMachineTests.swift`:
-
-```swift
-import XCTest
-@testable import WalkFlowCore
-
-final class GestureStateMachineTests: XCTestCase {
-    func testGestureKindEquatableSmoke() {
-        XCTAssertEqual(GestureKind.openPalm, GestureKind.openPalm)
-        XCTAssertNotEqual(GestureKind.openPalm, GestureKind.fist)
-    }
-}
-```
-
-- [ ] **Step 6: Run tests and build**
+- [ ] **Step 8: Run tests and build**
 
 Run:
 
@@ -319,17 +432,17 @@ Create `script/build_and_run.sh`:
 #!/usr/bin/env bash
 set -euo pipefail
 
+MODE="${1:-run}"
 APP_NAME="WalkFlowMac"
 BUNDLE_NAME="WalkFlow-Mac.app"
 BUNDLE_ID="com.m1ngwym.walkflowmac"
 CONFIGURATION="debug"
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 BUNDLE_PATH="$DIST_DIR/$BUNDLE_NAME"
 EXECUTABLE_PATH="$BUNDLE_PATH/Contents/MacOS/$APP_NAME"
 INFO_PLIST_SOURCE="$ROOT_DIR/Sources/WalkFlowMacApp/Resources/Info.plist"
-
-MODE="${1:-}"
 
 stop_app() {
   /usr/bin/pkill -x "$APP_NAME" 2>/dev/null || true
@@ -344,7 +457,7 @@ stage_bundle() {
 
 build_app() {
   cd "$ROOT_DIR"
-  /usr/bin/swift build -c "$CONFIGURATION" --product "$APP_NAME"
+  swift build -c "$CONFIGURATION" --product "$APP_NAME"
 }
 
 launch_app() {
@@ -359,27 +472,30 @@ verify_app() {
 stop_app
 build_app
 stage_bundle
-launch_app
 
 case "$MODE" in
-  --verify)
+  run)
+    launch_app
+    ;;
+  --verify|verify)
+    launch_app
     verify_app
     echo "Verified $APP_NAME is running."
     ;;
-  --logs)
-    /usr/bin/log stream --info --predicate 'process == "WalkFlowMac"'
+  --logs|logs)
+    launch_app
+    /usr/bin/log stream --info --style compact --predicate 'process == "WalkFlowMac"'
     ;;
-  --telemetry)
-    /usr/bin/log stream --info --predicate 'subsystem == "com.m1ngwym.walkflowmac"'
+  --telemetry|telemetry)
+    launch_app
+    /usr/bin/log stream --info --style compact --predicate 'subsystem == "com.m1ngwym.walkflowmac"'
     ;;
-  --debug)
-    echo "Attach LLDB manually with: lldb -n $APP_NAME"
-    ;;
-  "")
+  --debug|debug)
+    lldb -- "$EXECUTABLE_PATH"
     ;;
   *)
-    echo "Unknown mode: $MODE" >&2
-    exit 64
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    exit 2
     ;;
 esac
 ```
@@ -399,9 +515,17 @@ Expected: no output.
 Create `.codex/environments/environment.toml`:
 
 ```toml
+# THIS IS AUTOGENERATED. DO NOT EDIT MANUALLY
+version = 1
+name = "WalkFlow-Mac"
+
+[setup]
+script = ""
+
 [[actions]]
 name = "Run"
-command = "./script/build_and_run.sh --verify"
+icon = "run"
+command = "./script/build_and_run.sh"
 ```
 
 - [ ] **Step 4: Verify launch**
@@ -3039,7 +3163,7 @@ Expected:
 swift test passes
 swift build passes
 Run verify passes
-rg finds no SwiftUI usage and no unfinished placeholders
+rg finds no SwiftUI import or usage in source files and no unfinished placeholders
 ```
 
 The `rg` command may find historic text that says "不使用 SwiftUI" in docs. That is acceptable. Any Swift source import or usage of SwiftUI is a blocker.
@@ -3064,6 +3188,115 @@ Commit the task-scoped implementation files after reviewing `git status --short`
 git add Package.swift Sources Tests script .codex Docs docs/tasks/001-gesture-control-macos-app-bootstrap
 git commit -m "feat: bootstrap gesture control macOS app"
 ```
+
+### Task 15.3: Final review, smoke test, and end-to-end acceptance
+
+**Files:**
+- Read: all modified files
+- Modify: `docs/tasks/001-gesture-control-macos-app-bootstrap/review.md`
+
+- [ ] **Step 1: Capture final implementation range**
+
+Run:
+
+```bash
+BASE_SHA=$(git rev-list --max-parents=0 HEAD)
+HEAD_SHA=$(git rev-parse HEAD)
+printf 'BASE_SHA=%s\nHEAD_SHA=%s\n' "$BASE_SHA" "$HEAD_SHA"
+git diff --stat "$BASE_SHA..$HEAD_SHA"
+```
+
+Expected: range covers the full implementation series that bootstraps the app.
+
+- [ ] **Step 2: Run smoke test**
+
+Run:
+
+```bash
+./script/build_and_run.sh --verify
+./script/build_and_run.sh --logs
+```
+
+`--logs` streams until interrupted. Capture the relevant launch lines, then stop it with `Ctrl-C` and record the evidence in `review.md`.
+
+Smoke pass criteria:
+
+```text
+App launches as dist/WalkFlow-Mac.app
+Main window appears in foreground
+Menu bar status item appears
+HUD can be shown and hidden
+No runtime crash during launch
+No SwiftUI import or symbol is introduced by project source
+```
+
+Record exact observed result and any manual steps in `review.md`.
+
+- [ ] **Step 3: Run end-to-end manual test matrix**
+
+Exercise these paths and record pass/fail evidence in `review.md`:
+
+```text
+Camera permission prompt or granted-state display
+Accessibility permission missing/granted-state display
+Open Palm enters ready/control window
+Index Up emits upward scroll action
+Index Down emits downward scroll action
+Fist exits control window or stops continuous scroll
+OK Pinch emits one right-Command action and respects cooldown/release gating
+Hand Lost exits control window and shows red-dot blocked state
+Menu bar Enable toggles hard enable state
+Menu bar Pause toggles recognition pause
+Menu bar Show HUD shows pinned HUD
+Menu bar Open Window brings the main window forward
+Settings entry opens the settings/config surface
+Quit exits the app cleanly
+```
+
+- [ ] **Step 4: Run telemetry and signing verification**
+
+Run:
+
+```bash
+./script/build_and_run.sh --telemetry
+plutil -p "dist/WalkFlow-Mac.app/Contents/Info.plist"
+codesign -dvvv --entitlements :- "dist/WalkFlow-Mac.app" 2>&1 | sed -n '1,120p'
+spctl -a -vv "dist/WalkFlow-Mac.app" 2>&1 | sed -n '1,80p'
+```
+
+`--telemetry` streams until interrupted. Capture the relevant subsystem/category lines, then stop it with `Ctrl-C`.
+
+Expected: telemetry can be filtered by subsystem/category; `Info.plist` contains camera usage string and bundle metadata; signing/trust state is classified as local debug/ad hoc/distribution gap without conflating local debug with notarization.
+
+- [ ] **Step 5: Request final high-intensity code review**
+
+Use `superpowers:requesting-code-review` with:
+
+```text
+DESCRIPTION: Full WalkFlow-Mac AppKit bootstrap implementation.
+PLAN_OR_REQUIREMENTS: docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md plus task.md.
+BASE_SHA: value from Step 1.
+HEAD_SHA: value from Step 1.
+```
+
+The final reviewer must check:
+
+```text
+Plan alignment
+AppKit-only compliance
+No SwiftUI usage
+TDD evidence and test quality
+Subagent/review checkpoint evidence
+Camera/Vision/Event/HUD/MenuBar integration correctness
+Permission and Accessibility failure behavior
+Performance and memory gates
+Telemetry usefulness and privacy
+Signing/entitlements classification
+Smoke and end-to-end test results
+No AGENTS.md/.superpowers/docs/superpowers files staged or tracked
+```
+
+Critical and Important findings must be fixed, retested, and re-reviewed before completion.
 
 ## Conditional Phase: MediaPipe Native Spike
 

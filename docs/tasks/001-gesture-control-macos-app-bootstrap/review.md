@@ -37,6 +37,8 @@
 - 已统一正式项目口径：`WalkFlow-Mac`、`https://github.com/m1ng-wym/walkflow-mac.git`、默认分支 `main`。
 - 实现计划中的 SwiftPM 命名已更新为 `WalkFlowMac` package/executable、`WalkFlowCore` library、`WalkFlowMacApp` app target，App 显示名为 `WalkFlow-Mac`。
 - 当前仓库跟踪内容已排除 `AGENTS.md`、`.superpowers/` 和 `docs/superpowers/`；这些文件保留在本地。
+- 已将用户最新流程要求写入 `plan.md`：后续所有开发必须使用 Superpowers TDD；默认采用 Subagent-Driven Development；并行 agent 只用于独立域、非重叠文件或独立 worktree；每阶段必须 requesting-code-review；最终必须包含 full review、Smoke 测试和端到端测试。
+- 已将 Build macOS Apps 能力转化为计划内流程：SwiftPM 负责 package/build/test；build-run-debug 负责 `.app` bundle 启动脚本和 Codex Run action；test-triage 负责失败分类；telemetry 负责 OSLog 验证；signing-entitlements 负责 bundle/signing/trust 检查；packaging-notarization 仅用于未来分发准备；SwiftUI-only 技能只吸收原则，不引入 SwiftUI API。
 
 ## 验证命令和结果
 
@@ -52,6 +54,7 @@
 - 已执行 `git push -u origin main`，远端 `main` 分支创建成功，本地 `main` 已设置为跟踪 `origin/main`。
 - 已执行 `git ls-remote --heads origin main`，确认远端 `refs/heads/main` 存在。
 - 已执行 `git rm --cached -r AGENTS.md .superpowers docs/superpowers`，仅从 Git 索引移除这些路径，本地文件未删除。
+- 已执行 Superpowers 和 Build macOS Apps 技能说明审阅，并据此更新 `plan.md` 的执行流程。
 
 ## 跳过的检查
 
