@@ -147,10 +147,28 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - Phase 5 code review 发现 1 个 Important：测试覆盖未满足冻结计划绑定矩阵，缺少 paused、ready、scroll、command、hand lost、stop reducer 层测试。已补齐对应测试，focused tests 从 3 个扩展到 9 个。
 - Phase 5 re-review 已通过：reviewer 确认无 Critical / Important / Minor，之前的 Important 已关闭。
 - 已执行 `swift test --filter HUDStateReducerTests`、`swift test`、`swift build`、`git diff --check` 和 `plan.md` hash 检查，结果写入 `review.md`。
+- 已完成 Phase 5 checkpoint commit：`3aa5fa5 feat: add HUD state reducer`。
+
+### 2026-06-16 Phase 6 System Permissions And Event Output 进度
+
+- 已完成 Task 6.1 permission service TDD：
+  - RED：新增 `SystemPermissionServiceTests` 后，focused test 因 `SystemPermissionService`、`CameraAuthorizationProviding`、`AccessibilityTrustProviding` 不存在失败。
+  - GREEN：新增 `SystemPermissionService`，通过可注入 camera/accessibility provider 生成 `PermissionSnapshot`，支持 camera request 和 accessibility prompt。测试使用 fake provider，不触发真实权限弹窗。
+  - 已验证 `Info.plist` 的 `NSCameraUsageDescription` 为 `WalkFlow-Mac uses the camera to recognize hand gestures for remote control.`。
+- 已完成 Task 6.2 CGEvent output TDD：
+  - RED：新增 `CGEventOutputTests` 后，focused test 因 `CGEventOutput` / `CGEventPosting` 不存在失败。
+  - GREEN：新增 dry-run 可注入 `CGEventOutput`，映射 scroll up/down delta，并用 `kVK_RightCommand` 生成右侧 Command down/up 事件。测试只记录 fake poster events，不发送真实滚动或按键。
+- 已执行 `swift test --filter SystemPermissionServiceTests`、`swift test --filter CGEventOutputTests`、`swift test`、`swift build` 和 `git diff --check`，结果写入 `review.md`。
+- Phase 6 code review 初审发现 1 个 Important 和 2 个 Minor：
+  - Important：冻结计划要求触碰 permissions/event output 时也要补 `./script/build_and_run.sh --verify` 验收证据，初审时文档尚未记录该证据。
+  - Minor：permission tests 缺少 camera `.restricted` / `.notDetermined` 映射覆盖；event output tests 缺少 `.none` / `.stopContinuousScroll` no-op 覆盖。
+- 已补充 `SystemPermissionServiceTests.testCameraStatusMapsRestrictedAndNotDetermined` 和 `CGEventOutputTests.testNoOpActionsDoNotPostEvents`，并重新执行 focused tests、全量 `swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查。
+- Phase 6 re-review 已通过：reviewer 确认之前 1 个 Important 和 2 个 Minor 均已关闭，未发现新的 Critical / Important / Minor，并批准 Phase 6 从 code-review 角度进入 checkpoint commit。
+- Phase 6 人工 right-Command 验证仍按冻结计划后移：当前仅完成 dry-run event mapping；必须等后续 app integration 能从真实手势路径触发 `pressRightCommand` 后，再用 Keyboard Viewer 或用户 dictation 配置验证右侧 `Command` 是否被系统按预期识别。
 
 ## 下一步
 
-完成 Phase 5 checkpoint commit；随后继续进入 Phase 6 System Permissions / Event Output。
+完成 Phase 6 code review gate 和 checkpoint commit；随后继续进入 Phase 7 Camera / Vision。
 
 ## 阻塞
 

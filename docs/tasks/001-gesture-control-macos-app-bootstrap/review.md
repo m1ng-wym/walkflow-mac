@@ -50,6 +50,12 @@
 - 2026-06-16 Phase 4 code review gate：reviewer 未发现 Critical / Important；Minor 指出缺少 `classify(nil)` 显式测试。已补充 `testNilSnapshotReturnsHandLost`，无需改生产代码。
 - 2026-06-16 Phase 5 实现发现：`HUDStateReducer` 当前为纯 `WalkFlowCore` value reducer，不触碰 AppKit/Lottie/窗口层；具体动效播放仍在 Phase 10/11 的 HUD AppKit 层实现。
 - 2026-06-16 Phase 5 code review gate 初审：发现 1 个 Important。计划 TDD 矩阵要求 `HUDStateReducerTests` 覆盖 disabled、permission、standby、ready、scroll、command、hand lost、stop；初始测试只覆盖 disabled、permission、standby，未直接保护 paused 分支和 stateOutput passthrough。已补齐 paused、ready、scroll、command、hand lost、stop 测试。
+- 2026-06-16 Phase 5 re-review gate：reviewer 确认无 Critical、Important、Minor，之前的 Important 已关闭。
+- 2026-06-16 Phase 6 实现发现：`SystemPermissionServiceTests` 通过 fake provider 验证权限快照，不请求真实 Camera/Accessibility 权限；`CGEventOutputTests` 通过 fake poster 验证事件映射，不 post 真实滚动或键盘事件。
+- 2026-06-16 Phase 6 人工 gate 状态：右侧 `Command` 是否被 macOS/用户语音输入配置识别为 right-side Command，必须等后续 app 集成到可触发 `pressRightCommand` 后用 Keyboard Viewer 或用户 dictation 配置验证；当前 Phase 6 只完成 dry-run 事件映射，不声明人工 gate 已完成。
+- 2026-06-16 Phase 6 code review gate 初审：发现 1 个 Important 和 2 个 Minor。Important：阶段触碰 permissions/event output，按冻结计划需要记录 `./script/build_and_run.sh --verify`，初审时缺少该证据。Minor：permission tests 缺少 camera `.restricted` / `.notDetermined` 映射覆盖；event output tests 缺少 `.none` / `.stopContinuousScroll` no-op 覆盖。
+- 2026-06-16 Phase 6 review 修复：已补充 camera `.restricted` / `.notDetermined` 测试和 no-op action 测试；已重新执行 focused tests、全量测试、build、run script verify、diff check、冻结计划 hash 检查和 SwiftUI 禁用检查。Phase 6 正在等待 re-review 确认 Important / Minor 已关闭。
+- 2026-06-16 Phase 6 re-review gate：reviewer 确认此前 1 个 Important 和 2 个 Minor 均已关闭；未发现新的 Critical、Important 或 Minor；Phase 6 从 code-review 角度批准提交。人工 right-Command 真实识别 gate 仍按计划后移到 app 集成可触发路径后验证。
 - 设计规格自审发现并修正了三类可执行性歧义：`Vision` 达标标准、`MediaPipe` 进入门槛、第一版性能门槛。
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
@@ -160,6 +166,25 @@
   - Phase 5 review Important 修复后，`swift build`：通过，`Build complete`。
   - Phase 5 review Important 修复后，`git diff --check`：通过，无 whitespace error 输出。
   - Phase 5 review Important 修复后，`LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+- 2026-06-16 Phase 6 TDD 和验证：
+  - `swift test --filter SystemPermissionServiceTests` RED：失败原因符合预期，`SystemPermissionService`、`CameraAuthorizationProviding`、`AccessibilityTrustProviding` 不存在。
+  - 新增 `SystemPermissionService` 后，`swift test --filter SystemPermissionServiceTests`：通过，2 个 XCTest，0 failures。
+  - `plutil -extract NSCameraUsageDescription raw Sources/WalkFlowMacApp/Resources/Info.plist`：输出 `WalkFlow-Mac uses the camera to recognize hand gestures for remote control.`。
+  - Permission service 后 full `swift test`：通过，37 个 XCTest，0 failures。
+  - Permission service 后 `swift build`：通过，`Build complete`。
+  - `swift test --filter CGEventOutputTests` RED：失败原因符合预期，`CGEventOutput` / `CGEventPosting` 不存在。
+  - 新增 `CGEventOutput` 后，`swift test --filter CGEventOutputTests`：通过，2 个 XCTest，0 failures。
+  - Phase 6 full `swift test`：通过，39 个 XCTest，0 failures。
+  - Phase 6 `swift build`：通过，`Build complete`。
+  - Phase 6 `git diff --check`：通过，无 whitespace error 输出。
+  - Phase 6 review 修复后，`swift test --filter SystemPermissionServiceTests`：通过，3 个 XCTest，0 failures。
+  - Phase 6 review 修复后，`swift test --filter CGEventOutputTests`：通过，3 个 XCTest，0 failures。
+  - Phase 6 review 修复后，full `swift test`：通过，41 个 XCTest，0 failures。
+  - Phase 6 review 修复后，`swift build`：通过，`Build complete`。
+  - Phase 6 review 修复后，`./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - Phase 6 review 修复后，`git diff --check`：通过，无 whitespace error 输出。
+  - Phase 6 review 修复后，`LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - Phase 6 review 修复后，`rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
