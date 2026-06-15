@@ -137,10 +137,20 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 已补充左右手覆盖：`testOpenPalmClassifiesLeftAndRightHands` 证明当前几何分类不依赖左右手枚举，满足 Phase 4 left/right hand 验收要求。
 - Phase 4 code review gate 未发现 Critical / Important；Minor 指出缺少 `classify(nil)` 显式测试，已补充 `testNilSnapshotReturnsHandLost`。
 - 已执行 `swift test --filter GestureClassifierTests`、`swift test`、`swift build`、`git diff --check`、SwiftUI 禁用检查和 `plan.md` hash 检查，结果写入 `review.md`。
+- 已完成 Phase 4 checkpoint commit：`e08ae59 feat: add gesture classifier`。
+
+### 2026-06-16 Phase 5 HUD State Mapping 进度
+
+- 已完成 Task 5.1 HUD reducer TDD：
+  - RED：新增 `HUDStateReducerTests` 后，focused test 因 `HUDStateReducer` 不存在失败。
+  - GREEN：新增 `HUDStateReducer`，实现 HUD 优先级：disabled 红点 lock、permission blocked 红点 alertTriangle、paused 绿点空图标、否则透传状态机 HUD。
+- Phase 5 code review 发现 1 个 Important：测试覆盖未满足冻结计划绑定矩阵，缺少 paused、ready、scroll、command、hand lost、stop reducer 层测试。已补齐对应测试，focused tests 从 3 个扩展到 9 个。
+- Phase 5 re-review 已通过：reviewer 确认无 Critical / Important / Minor，之前的 Important 已关闭。
+- 已执行 `swift test --filter HUDStateReducerTests`、`swift test`、`swift build`、`git diff --check` 和 `plan.md` hash 检查，结果写入 `review.md`。
 
 ## 下一步
 
-完成 Phase 4 checkpoint commit；随后继续进入 Phase 5 HUD reducer。
+完成 Phase 5 checkpoint commit；随后继续进入 Phase 6 System Permissions / Event Output。
 
 ## 阻塞
 
