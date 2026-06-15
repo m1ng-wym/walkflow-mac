@@ -61,6 +61,13 @@
 - 2026-06-16 Phase 7 code review gate 状态：Phase 7 已完成 TDD 和本地验证，正在等待 requesting-code-review。
 - 2026-06-16 Phase 7 spec review gate：reviewer 未发现 Critical / Important；Minor 指出 Vision joint map 测试只验证 count 和代表性 joints，不能防止中间关节重复/漏映射。已补充 `Set(VisionHandPoseProvider.jointMap.values) == Set(HandJointName.allCases)` 并重新跑通 focused test。
 - 2026-06-16 Phase 7 code-quality review gate：reviewer 未发现 Critical / Important；Minor 指出 `CameraSessionController.configure()` / `captureOutput` 转发路径尚未自动化覆盖。考虑到测试不能触发真实摄像头权限，当前不作为 Phase 7 阻塞；后续 Phase 8/12 接入前应通过可注入 factory 或更窄 delegate 测试/人工 smoke 补证。reviewer 还提示 repeated `configure()` 可能重复 add input/output、Vision orientation 固定 `.up`、每帧 Vision 可能带来性能压力，这些进入后续 orchestration、Vision gate 和 performance gate。
+- 2026-06-16 Phase 8 实现发现：AppController 当前把 blocked/disabled/paused guard 放在状态机之前，避免禁用或暂停期间的手势暗中改变 ready/scroll 状态。`.none` action 不再下发到 event output；`stopContinuousScroll` 等显式 action 仍可下发。
+- 2026-06-16 Phase 8 实现发现：`GestureStateOutput` 需要跨 `WalkFlowCore` / `WalkFlowMacApp` target 构造，已补 public initializer。这是公开 core 合同的小幅扩展，不改变 existing state-machine 行为。
+- 2026-06-16 Phase 8 code review gate 状态：Phase 8 已完成 TDD 和本地验证，正在等待 requesting-code-review。
+- 2026-06-16 Phase 8 spec review gate 初审：未发现 Critical；发现 1 个 Important，指出 permission-blocked `handleObservation(_:)` 路径缺少不 post event / 不预热状态机的自动化证明；另有 1 个 Minor 要求提交前更新 review gate 文档状态。
+- 2026-06-16 Phase 8 code-quality review gate 初审：未发现 Critical；发现 4 个 Important。第一，disable/pause/stop 未 reset `stateMachine`，可能遗留已 ready / continuous-scroll 状态并在恢复后误触发。第二，camera frame callback 与 AppKit/main-thread 操作之间共享 mutable state 未同步。第三，permission-blocked observation path 缺测试。第四，缺允许状态下正向 gesture action 到 `eventOutput.execute` 的测试。
+- 2026-06-16 Phase 8 review 修复：已补 permission-blocked observation 不执行/不预热测试、permitted armed gesture 正向 scroll action 测试，以及 disable/pause/stop 清空已 ready 状态机的 lifecycle tests。实现上新增 `NSRecursiveLock` 保护 `state` / `stateMachine` / event output 边界，并在 disable/pause/stop 时 reset state machine。Phase 8 正在等待 re-review。
+- 2026-06-16 Phase 8 re-review gate：spec reviewer 确认上一轮 Important 已关闭；code-quality reviewer 确认 4 个 Important 均已关闭，未发现新的 Critical / Important / Minor，并批准 Phase 8 从 code-quality 角度提交。真实摄像头 frame delivery、右侧 Command 人工验证、AppDelegate/main window 装配仍按后续阶段处理，不作为 Phase 8 阻塞。
 - 设计规格自审发现并修正了三类可执行性歧义：`Vision` 达标标准、`MediaPipe` 进入门槛、第一版性能门槛。
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
@@ -204,6 +211,28 @@
   - Phase 7 `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
   - Phase 7 `rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
   - Phase 7 review Minor 修复后，`swift test --filter VisionHandPoseProviderTests`：通过，1 个 XCTest，0 failures。
+- 2026-06-16 Phase 8 TDD 和验证：
+  - `swift test --filter AppControllerTests` RED：失败原因符合预期，`AppController`、`SettingsStoring`、`PermissionServicing`、`CameraControlling`、`HUDPresenting` 等不存在。
+  - 新增 `AppStateStore` / `AppController` 后，`swift test --filter AppControllerTests` 首次 GREEN 前失败：`GestureStateOutput` initializer 为 internal，App target 不可构造；已补 public initializer。
+  - 继续执行 `swift test --filter AppControllerTests` 时发现行为失败：`.none` action 被传给 event output；已修正为只执行非 `.none` action。
+  - 新增 `testDisabledAppDoesNotPrimeGestureStateForLaterEnable` 后，focused RED 证明 disabled 状态仍会让状态机进入 ready；已修正为 blocked/disabled/paused/permission-blocked 时不推进状态机。
+  - 修复后 `swift test --filter AppControllerTests/testDisabledAppDoesNotPrimeGestureStateForLaterEnable`：通过，1 个 XCTest，0 failures。
+  - 修复后 `swift test --filter AppControllerTests`：通过，6 个 XCTest，0 failures。
+  - Phase 8 full `swift test`：通过，51 个 XCTest，0 failures。
+  - Phase 8 `swift build`：通过，`Build complete`。
+  - Phase 8 `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - Phase 8 `git diff --check`：通过，无 whitespace error 输出。
+  - Phase 8 `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - Phase 8 `rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
+  - Phase 8 review 修复前新增 lifecycle tests，`swift test --filter AppControllerTests/testDisablingAppClearsAlreadyPrimedGestureState --filter AppControllerTests/testPausingAppClearsAlreadyPrimedGestureState --filter AppControllerTests/testStopRecognitionClearsAlreadyPrimedGestureState`：得到预期 RED，3 个 XCTest 均失败，证明 disable/pause/stop 后旧 ready 状态会残留。
+  - Phase 8 review 修复后，`swift test --filter AppControllerTests/testDisablingAppClearsAlreadyPrimedGestureState --filter AppControllerTests/testPausingAppClearsAlreadyPrimedGestureState --filter AppControllerTests/testStopRecognitionClearsAlreadyPrimedGestureState --filter AppControllerTests/testPermissionBlockedObservationDoesNotExecuteOrPrimeGestureState --filter AppControllerTests/testPermittedArmedGestureExecutesScrollAction`：通过，5 个 XCTest，0 failures。
+  - Phase 8 review 修复后，`swift test --filter AppControllerTests`：通过，11 个 XCTest，0 failures。
+  - Phase 8 review 修复后，full `swift test`：通过，56 个 XCTest，0 failures。
+  - Phase 8 review 修复后，`swift build`：通过，`Build complete`。
+  - Phase 8 review 修复后，`./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - Phase 8 review 修复后，`git diff --check`：通过，无 whitespace error 输出。
+  - Phase 8 review 修复后，`LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - Phase 8 review 修复后，`rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。

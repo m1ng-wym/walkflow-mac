@@ -180,10 +180,35 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
   - 已执行 `swift test --filter VisionHandPoseProviderTests`、`swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查。
 - Phase 7 spec/code review 均已完成，未发现 Critical / Important；reviewer 提出的 Vision joint map 测试覆盖 Minor 已补充为 `Set(jointMap.values) == Set(HandJointName.allCases)` 并重新跑通 focused test。
 - Phase 7 仍保留一个非阻塞残余风险：`CameraSessionController.configure()` 和真实 frame delivery 不在自动化测试中触发，避免测试请求真实摄像头权限；后续 Phase 8/12 app integration 和 manual smoke gate 必须验证。
+- 已完成 Phase 7 checkpoint commit：`ebefc5f feat: add camera and vision pipeline`。
+
+### 2026-06-16 Phase 8 App Orchestration 进度
+
+- 已完成 Task 8.1 AppController TDD：
+  - RED：新增 `AppControllerTests` 后，focused test 因 `AppController`、`SettingsStoring`、`PermissionServicing`、`CameraControlling`、`HUDPresenting` 等不存在失败。
+  - GREEN：新增 `AppStateStore` 和 `AppController`，提供 settings、permissions、camera、Vision、classifier、event output、HUD presenter 注入边界；连接 `CameraFrameConsumer`、`GestureClassifier`、`GestureStateMachine`、`HUDStateReducer` 和 `ControlEventOutput`。
+  - AppController 测试覆盖：权限阻塞不启动 camera；权限允许时启动 camera；disabled 显示 lock HUD；disabled/paused 不执行 gesture actions；disabled 状态不会暗中预热状态机并在重新启用后直接触发滚动。
+  - RED/GREEN 中发现 `GestureStateOutput` initializer 仍是 internal，App target 无法构造阶段需要的 blocked/standby output；已在 `WalkFlowCore` 中补充 public initializer，未改变状态机行为。
+  - RED/GREEN 中发现 AppController 会把 `.none` action 也下发给 event output；已修正为只下发非 `.none` action。
+  - RED/GREEN 中发现 disabled/paused/permission-blocked 时仍会先喂状态机，可能形成隐藏 ready 状态；已补充失败测试并修正为阻塞状态不推进状态机。
+- 已执行 `swift test --filter AppControllerTests`、`swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查。
+- Phase 8 初轮 spec/code review 未发现 Critical，但共发现 5 个 Important：
+  - permission-blocked `handleObservation(_:)` 缺少不发事件/不预热状态机的自动化证明。
+  - `setEnabled(_:)`、`setPaused(_:)`、`stopRecognition()` 未 reset `stateMachine`，会遗留已 ready / continuous-scroll 状态。
+  - camera frame callback 与 AppKit/main-thread 操作之间存在共享 mutable state 竞态风险。
+  - 缺少 permission-blocked observation path 的测试。
+  - 缺少允许状态下手势动作确实进入 `eventOutput.execute` 的正向测试。
+- 已按 TDD 修复上述 review findings：
+  - 新增并跑通 permission-blocked observation 不执行、不预热状态机测试。
+  - 新增并跑通 permitted armed gesture 正向 scroll action 测试。
+  - 新增并先观察 RED，再修复 disable/pause/stop 清空已 ready 状态机的 lifecycle tests。
+  - `AppController` 增加 `NSRecursiveLock` 保护 `state` / `stateMachine` / event output 边界，并在 disable/pause/stop 时 reset state machine。
+- Important 修复后已重新执行 `swift test --filter AppControllerTests`、`swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查；正在等待 Phase 8 re-review。
+- Phase 8 re-review 已通过：spec reviewer 确认上一轮 Important 已关闭；code-quality reviewer 确认 4 个 Important 均已关闭，未发现新的 Critical / Important / Minor，并批准 Phase 8 从 code-quality 角度进入 checkpoint commit。
 
 ## 下一步
 
-完成 Phase 7 code review gate 和 checkpoint commit；随后继续进入 Phase 8 App Orchestration。
+完成 Phase 8 code review gate 和 checkpoint commit；随后继续进入 Phase 9 Main Window AppKit UI。
 
 ## 阻塞
 

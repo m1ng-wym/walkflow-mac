@@ -11,6 +11,12 @@ public struct GestureStateOutput: Equatable, Sendable {
     public var mode: GestureMode
     public var action: ControlAction
     public var hud: HUDPresentation
+
+    public init(mode: GestureMode, action: ControlAction, hud: HUDPresentation) {
+        self.mode = mode
+        self.action = action
+        self.hud = hud
+    }
 }
 
 public struct GestureStateMachine {
