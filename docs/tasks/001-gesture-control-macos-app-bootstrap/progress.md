@@ -165,10 +165,25 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 已补充 `SystemPermissionServiceTests.testCameraStatusMapsRestrictedAndNotDetermined` 和 `CGEventOutputTests.testNoOpActionsDoNotPostEvents`，并重新执行 focused tests、全量 `swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查。
 - Phase 6 re-review 已通过：reviewer 确认之前 1 个 Important 和 2 个 Minor 均已关闭，未发现新的 Critical / Important / Minor，并批准 Phase 6 从 code-review 角度进入 checkpoint commit。
 - Phase 6 人工 right-Command 验证仍按冻结计划后移：当前仅完成 dry-run event mapping；必须等后续 app integration 能从真实手势路径触发 `pressRightCommand` 后，再用 Keyboard Viewer 或用户 dictation 配置验证右侧 `Command` 是否被系统按预期识别。
+- 已完成 Phase 6 checkpoint commit：`3906c53 feat: add permissions and event output`。
+
+### 2026-06-16 Phase 7 Camera And Vision Pipeline 进度
+
+- 已完成 Task 7.1 camera preview TDD：
+  - RED：新增 `CameraPreviewViewTests` 后，focused test 因 `CameraPreviewView` 和 `CameraSessionController` 不存在失败。
+  - TDD 调整：为避免未测试地创建 `CameraSessionController`，在计划原有 preview layer 测试基础上补充 preview session attach 测试和 lightweight recognition preset 测试，再写生产代码。
+  - GREEN：新增 `CameraPreviewView`，使用 `AVCaptureVideoPreviewLayer`，默认 `.resizeAspectFill`，并支持 attach `AVCaptureSession`；新增 `CameraSessionController`，持有 `.vga640x480` session、可配置 camera input/video data output，并通过 `CameraFrameConsumer` 转发 sample buffer。
+  - 已执行 `swift test --filter CameraPreviewViewTests`、`swift test` 和 `swift build`。
+- 已完成 Task 7.2 Vision hand-pose provider TDD：
+  - RED：新增 `VisionHandPoseProviderTests` 后，focused test 因 `VisionHandPoseProvider` 不存在失败。
+  - GREEN：新增 `VisionHandPoseProvider`，使用 `VNDetectHumanHandPoseRequest(maximumHandCount: 1)`，将 Vision 21 个手部关键点映射到 `HandPoseSnapshot` 的 `HandJointName`。
+  - 已执行 `swift test --filter VisionHandPoseProviderTests`、`swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查。
+- Phase 7 spec/code review 均已完成，未发现 Critical / Important；reviewer 提出的 Vision joint map 测试覆盖 Minor 已补充为 `Set(jointMap.values) == Set(HandJointName.allCases)` 并重新跑通 focused test。
+- Phase 7 仍保留一个非阻塞残余风险：`CameraSessionController.configure()` 和真实 frame delivery 不在自动化测试中触发，避免测试请求真实摄像头权限；后续 Phase 8/12 app integration 和 manual smoke gate 必须验证。
 
 ## 下一步
 
-完成 Phase 6 code review gate 和 checkpoint commit；随后继续进入 Phase 7 Camera / Vision。
+完成 Phase 7 code review gate 和 checkpoint commit；随后继续进入 Phase 8 App Orchestration。
 
 ## 阻塞
 

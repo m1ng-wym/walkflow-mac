@@ -56,6 +56,11 @@
 - 2026-06-16 Phase 6 code review gate 初审：发现 1 个 Important 和 2 个 Minor。Important：阶段触碰 permissions/event output，按冻结计划需要记录 `./script/build_and_run.sh --verify`，初审时缺少该证据。Minor：permission tests 缺少 camera `.restricted` / `.notDetermined` 映射覆盖；event output tests 缺少 `.none` / `.stopContinuousScroll` no-op 覆盖。
 - 2026-06-16 Phase 6 review 修复：已补充 camera `.restricted` / `.notDetermined` 测试和 no-op action 测试；已重新执行 focused tests、全量测试、build、run script verify、diff check、冻结计划 hash 检查和 SwiftUI 禁用检查。Phase 6 正在等待 re-review 确认 Important / Minor 已关闭。
 - 2026-06-16 Phase 6 re-review gate：reviewer 确认此前 1 个 Important 和 2 个 Minor 均已关闭；未发现新的 Critical、Important 或 Minor；Phase 6 从 code-review 角度批准提交。人工 right-Command 真实识别 gate 仍按计划后移到 app 集成可触发路径后验证。
+- 2026-06-16 Phase 7 TDD 调整：冻结计划 Task 7.1 只列出 preview layer RED 测试，但同一任务也要创建 `CameraSessionController`。为满足项目强制 TDD gate，实际实现前补充了 preview session attach 和 `.vga640x480` preset 自动化测试，避免未测试地新增 camera controller 生产代码。
+- 2026-06-16 Phase 7 实现发现：`CameraSessionController.configure()` 会触碰真实 camera device、input 和 video data output，但当前自动化测试不调用 `configure()`，避免在测试中触发摄像头硬件/权限。真实 camera preview、权限请求和 frame delivery 仍需后续 app orchestration / manual smoke gate 验证。
+- 2026-06-16 Phase 7 code review gate 状态：Phase 7 已完成 TDD 和本地验证，正在等待 requesting-code-review。
+- 2026-06-16 Phase 7 spec review gate：reviewer 未发现 Critical / Important；Minor 指出 Vision joint map 测试只验证 count 和代表性 joints，不能防止中间关节重复/漏映射。已补充 `Set(VisionHandPoseProvider.jointMap.values) == Set(HandJointName.allCases)` 并重新跑通 focused test。
+- 2026-06-16 Phase 7 code-quality review gate：reviewer 未发现 Critical / Important；Minor 指出 `CameraSessionController.configure()` / `captureOutput` 转发路径尚未自动化覆盖。考虑到测试不能触发真实摄像头权限，当前不作为 Phase 7 阻塞；后续 Phase 8/12 接入前应通过可注入 factory 或更窄 delegate 测试/人工 smoke 补证。reviewer 还提示 repeated `configure()` 可能重复 add input/output、Vision orientation 固定 `.up`、每帧 Vision 可能带来性能压力，这些进入后续 orchestration、Vision gate 和 performance gate。
 - 设计规格自审发现并修正了三类可执行性歧义：`Vision` 达标标准、`MediaPipe` 进入门槛、第一版性能门槛。
 - 设计规格已明确默认阈值：控制窗口 5 秒、滚动短按稳定 300 ms、连续滚动进入 700 ms、`OK Pinch` 稳定 300 ms、`OK` 冷却 1 秒。
 - 实现计划自审未发现占位词命中；计划覆盖 AppKit-only、SwiftPM bootstrap、AVFoundation、Vision、手势分类器、状态机、CGEvent/Accessibility、权限、主窗口、菜单栏、HUD、useAnimations/Lottie、Vision gate、性能 gate 和 MediaPipe 条件分支。
@@ -185,6 +190,20 @@
   - Phase 6 review 修复后，`git diff --check`：通过，无 whitespace error 输出。
   - Phase 6 review 修复后，`LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
   - Phase 6 review 修复后，`rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
+- 2026-06-16 Phase 7 TDD 和验证：
+  - `swift test --filter CameraPreviewViewTests` RED：失败原因符合预期，`CameraPreviewView` 和 `CameraSessionController` 不存在。
+  - 新增 `CameraPreviewView` / `CameraSessionController` 后，`swift test --filter CameraPreviewViewTests`：通过，3 个 XCTest，0 failures。
+  - Camera preview 后 full `swift test`：通过，44 个 XCTest，0 failures。
+  - Camera preview 后 `swift build`：通过，`Build complete`。
+  - `swift test --filter VisionHandPoseProviderTests` RED：失败原因符合预期，`VisionHandPoseProvider` 不存在。
+  - 新增 `VisionHandPoseProvider` 后，`swift test --filter VisionHandPoseProviderTests`：通过，1 个 XCTest，0 failures。
+  - Phase 7 full `swift test`：通过，45 个 XCTest，0 failures。
+  - Phase 7 `swift build`：通过，`Build complete`。
+  - Phase 7 `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - Phase 7 `git diff --check`：通过，无 whitespace error 输出。
+  - Phase 7 `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - Phase 7 `rg -n "import SwiftUI|SwiftUI\\." Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
+  - Phase 7 review Minor 修复后，`swift test --filter VisionHandPoseProviderTests`：通过，1 个 XCTest，0 failures。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
