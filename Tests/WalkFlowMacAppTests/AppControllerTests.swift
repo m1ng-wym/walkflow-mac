@@ -36,6 +36,24 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(camera.startCount, 1)
     }
 
+    func testStartRecognitionStartsCameraPreviewWhenCameraGrantedButAccessibilityMissing() {
+        let camera = FakeCameraController()
+        let hud = RecordingHUDPresenter()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .denied, inputMonitoring: .notRequired)),
+            camera: camera,
+            eventOutput: RecordingControlEventOutput()
+        )
+        controller.hudPresenter = hud
+
+        controller.startRecognition()
+
+        XCTAssertEqual(camera.startCount, 1)
+        XCTAssertEqual(hud.presentations.last?.dot, .red)
+        XCTAssertEqual(hud.presentations.last?.icon, .alertTriangle)
+    }
+
     func testLaunchPreparationRequestsCameraWhenNotDeterminedThenStartsAfterGrant() {
         let camera = FakeCameraController()
         let permissions = FakePermissionService(snapshot: PermissionSnapshot(camera: .notDetermined, accessibility: .granted, inputMonitoring: .notRequired))
@@ -69,6 +87,29 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(camera.startCount, 1)
         XCTAssertEqual(camera.configureWasCalledOnMainThread, true)
         XCTAssertEqual(camera.startWasCalledOnMainThread, true)
+    }
+
+    func testLaunchPreparationStartsPreviewWhenCameraGrantedButAccessibilityMissing() {
+        let camera = FakeCameraController()
+        let permissions = FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .denied, inputMonitoring: .notRequired))
+        let hud = RecordingHUDPresenter()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: permissions,
+            camera: camera,
+            eventOutput: RecordingControlEventOutput()
+        )
+        controller.hudPresenter = hud
+
+        controller.prepareCameraAuthorizationAndStartRecognition()
+
+        XCTAssertEqual(permissions.cameraRequestCount, 0)
+        XCTAssertEqual(camera.configureCount, 1)
+        XCTAssertEqual(camera.startCount, 1)
+        XCTAssertEqual(camera.configureWasCalledOnMainThread, true)
+        XCTAssertEqual(camera.startWasCalledOnMainThread, true)
+        XCTAssertEqual(hud.presentations.last?.dot, .red)
+        XCTAssertEqual(hud.presentations.last?.icon, .alertTriangle)
     }
 
     func testAttachPreviewAssignsCameraSessionToPreviewLayer() {
@@ -260,6 +301,29 @@ final class AppControllerTests: XCTestCase {
         XCTAssertTrue(output.actions.isEmpty)
     }
 
+    func testAccessibilityBlockedObservationDoesNotExecuteOrPrimeGestureStateWhilePreviewRuns() {
+        let output = RecordingControlEventOutput()
+        let camera = FakeCameraController()
+        let permissions = FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .denied, inputMonitoring: .notRequired))
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: permissions,
+            camera: camera,
+            eventOutput: output
+        )
+
+        controller.startRecognition()
+        controller.handleObservation(.init(kind: .openPalm, confidence: 1, timestamp: 0))
+        controller.handleObservation(.init(kind: .openPalm, confidence: 1, timestamp: 0.31))
+        permissions.snapshotValue = PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)
+        controller.refreshPermissions()
+        controller.handleObservation(.init(kind: .indexUp, confidence: 1, timestamp: 1.00))
+        controller.handleObservation(.init(kind: .indexUp, confidence: 1, timestamp: 1.31))
+
+        XCTAssertEqual(camera.startCount, 1)
+        XCTAssertTrue(output.actions.isEmpty)
+    }
+
     func testPermittedArmedGestureExecutesScrollAction() {
         let output = RecordingControlEventOutput()
         let controller = AppController(
@@ -336,6 +400,8 @@ private final class FakePermissionService: PermissionServicing {
         cameraRequestCount += 1
         cameraRequestCompletion = completion
     }
+
+    func promptForAccessibility() {}
 
     func completeCameraRequest(granted: Bool, snapshot: PermissionSnapshot) {
         snapshotValue = snapshot

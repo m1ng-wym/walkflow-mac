@@ -64,6 +64,19 @@ final class MainWindowControllerTests: XCTestCase {
         XCTAssertTrue(appController.state.permissions.canControl)
     }
 
+    func testPermissionPanelRecheckPromptsForAccessibilityWhenDenied() throws {
+        let permissions = MainWindowFakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .denied, inputMonitoring: .notRequired))
+        let appController = makeController(permissions: permissions)
+        let controlPanel = try controlPanel(from: MainWindowController(appController: appController))
+        permissions.snapshotAfterAccessibilityPrompt = PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)
+
+        try button(titled: "Recheck", in: controlPanel).performClick(nil)
+
+        XCTAssertEqual(permissions.accessibilityPromptCount, 1)
+        XCTAssertEqual(appController.state.permissions.accessibility, .granted)
+        XCTAssertTrue(appController.state.permissions.canControl)
+    }
+
     private func makeController() -> AppController {
         makeController(
             permissions: MainWindowFakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired))
@@ -132,6 +145,8 @@ private final class MainWindowFakeSettingsStore: SettingsStoring {
 
 private final class MainWindowFakePermissionService: PermissionServicing {
     var snapshotValue: PermissionSnapshot
+    var snapshotAfterAccessibilityPrompt: PermissionSnapshot?
+    private(set) var accessibilityPromptCount = 0
 
     init(snapshot: PermissionSnapshot) {
         snapshotValue = snapshot
@@ -143,6 +158,13 @@ private final class MainWindowFakePermissionService: PermissionServicing {
 
     func requestCameraAccess(completion: @escaping (Bool) -> Void) {
         completion(false)
+    }
+
+    func promptForAccessibility() {
+        accessibilityPromptCount += 1
+        if let snapshotAfterAccessibilityPrompt {
+            snapshotValue = snapshotAfterAccessibilityPrompt
+        }
     }
 }
 

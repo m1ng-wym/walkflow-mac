@@ -36,6 +36,6 @@ final class PermissionPanelView: NSView {
     }
 
     @objc private func recheck() {
-        appController.refreshPermissions()
+        appController.recheckPermissionsAndPromptForAccessibilityIfNeeded()
     }
 }

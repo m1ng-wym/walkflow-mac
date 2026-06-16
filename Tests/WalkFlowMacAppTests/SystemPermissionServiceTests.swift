@@ -43,6 +43,18 @@ final class SystemPermissionServiceTests: XCTestCase {
         XCTAssertEqual(restricted.snapshot().camera, .denied)
         XCTAssertEqual(notDetermined.snapshot().camera, .notDetermined)
     }
+
+    func testPromptForAccessibilityDelegatesToAccessibilityProvider() {
+        let accessibility = RecordingAccessibilityProvider(trusted: false)
+        let service = SystemPermissionService(
+            cameraProvider: FakeCameraProvider(status: .authorized),
+            accessibilityProvider: accessibility
+        )
+
+        service.promptForAccessibility()
+
+        XCTAssertEqual(accessibility.promptCount, 1)
+    }
 }
 
 private struct FakeCameraProvider: CameraAuthorizationProviding {
@@ -65,4 +77,21 @@ private struct FakeAccessibilityProvider: AccessibilityTrustProviding {
     }
 
     func promptForTrust() {}
+}
+
+private final class RecordingAccessibilityProvider: AccessibilityTrustProviding {
+    let trusted: Bool
+    private(set) var promptCount = 0
+
+    init(trusted: Bool) {
+        self.trusted = trusted
+    }
+
+    func isTrusted() -> Bool {
+        trusted
+    }
+
+    func promptForTrust() {
+        promptCount += 1
+    }
 }

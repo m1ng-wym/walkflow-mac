@@ -29,6 +29,7 @@ extension SettingsStore: SettingsStoring {}
 protocol PermissionServicing {
     func snapshot() -> PermissionSnapshot
     func requestCameraAccess(completion: @escaping (Bool) -> Void)
+    func promptForAccessibility()
 }
 
 extension SystemPermissionService: PermissionServicing {}
@@ -104,6 +105,19 @@ final class AppController: CameraFrameConsumer {
         publish(hud)
     }
 
+    func recheckPermissionsAndPromptForAccessibilityIfNeeded() {
+        let shouldPromptAccessibility = withStateLock {
+            state.permissions = permissions.snapshot()
+            return state.permissions.accessibility == .denied
+        }
+
+        if shouldPromptAccessibility {
+            permissions.promptForAccessibility()
+        }
+
+        refreshPermissions()
+    }
+
     func configureCameraIfPermitted() {
         let hud = withStateLock {
             state.permissions = permissions.snapshot()
@@ -124,10 +138,18 @@ final class AppController: CameraFrameConsumer {
 
     func startRecognition() {
         let hud: HUDPresentation? = withStateLock {
-            guard state.isEnabled, state.isPaused == false, state.permissions.canControl else {
+            guard state.isEnabled, state.isPaused == false else {
                 return storeHUD(.init(mode: .blocked, action: .none, hud: .init(dot: .red, icon: .alertTriangle, message: "Permission")))
             }
+
+            guard state.permissions.camera == .granted else {
+                return storeHUD(.init(mode: .blocked, action: .none, hud: .init(dot: .red, icon: .alertTriangle, message: "Permission")))
+            }
+
             camera.start()
+            guard state.permissions.canControl else {
+                return storeHUD(.init(mode: .blocked, action: .none, hud: .init(dot: .red, icon: .alertTriangle, message: "Permission")))
+            }
             return nil
         }
         if let hud {

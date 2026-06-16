@@ -341,10 +341,47 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - Camera permission bugfix code-quality re-review 已通过：reviewer 确认原 2 个 Important 均已关闭，未发现新的 Critical / Important / Minor，Assessment 为 `Ready to merge? Yes`。
 - 该修复只处理启动 Camera 授权请求缺口，不声明 Phase 13.2 Vision gate 已通过；真实手势矩阵仍需继续人工执行。
 
+### 2026-06-17 Camera Preview / Accessibility Recheck Bugfix 进度
+
+- Phase 13.2 继续前，用户反馈当前 App 主窗口右侧仍看不到摄像头画面、摄像头指示灯不亮，并且点击 `Accessibility` 下方的 `Recheck` 按钮没有可见反应。
+- 已按 systematic debugging 定位根因：
+  - `AppController.startRecognition()` 原先要求 `state.permissions.canControl == true` 才调用 `camera.start()`；`canControl` 同时要求 Camera 和 Accessibility，因此 Accessibility 未授权时 Camera 预览也被挡住。
+  - `PermissionPanelView.recheck()` 原先只调用 `refreshPermissions()`，不会触发 `SystemPermissionService.promptForAccessibility()`，所以用户点击 `Recheck` 时没有 macOS Accessibility 授权引导。
+- 已按 TDD 补充失败测试：
+  - `AppControllerTests.testStartRecognitionStartsCameraPreviewWhenCameraGrantedButAccessibilityMissing` 先失败，证明 Camera 已授权但 Accessibility 缺失时 `camera.startCount` 仍为 0。
+  - `MainWindowControllerTests.testPermissionPanelRecheckPromptsForAccessibilityWhenDenied` 先失败，证明 `Recheck` 未调用 Accessibility prompt。
+- 已完成 GREEN 修复：
+  - `startRecognition()` 改为 Camera granted 时即可启动 camera session，以便主窗口右侧预览出现；如果 Accessibility 仍缺失，HUD 继续显示红点/权限 alert，系统滚动和右侧 `Command` 仍由 `handleObservation(_:)` 的 `permissions.canControl` guard 阻塞。
+  - `PermissionServicing` 增加 `promptForAccessibility()`；`PermissionPanelView` 的 `Recheck` 改为在 Accessibility denied 时触发授权引导并刷新权限。
+- 已执行自动化验证：
+  - 两个新增 RED/GREEN focused tests 均已通过。
+  - `swift test --filter AppControllerTests`：18 个 XCTest，0 failures。
+  - `swift test --filter MainWindowControllerTests`：6 个 XCTest，0 failures。
+  - `swift test --filter MenuBarControllerTests`：5 个 XCTest，0 failures。
+  - `swift test --filter SystemPermissionServiceTests`：4 个 XCTest，0 failures。
+  - 全量 `swift test`：90 个 XCTest，0 failures。
+  - `swift build`：通过。
+  - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - `git diff --check`：通过。
+  - 冻结 `plan.md` hash 仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`。
+  - SwiftUI 禁用检查无命中；local-only artifact 检查通过。
+- 已启动两个并行只读 subagent review：
+  - 规格/权限边界 reviewer：重点检查是否错误放开了滚动/右侧 `Command` 的 Accessibility 权限边界。
+  - 代码质量 reviewer：重点检查 camera start 时机、locking/publish、Recheck prompt、测试覆盖和回归风险。
+- 规格/权限边界 reviewer 未发现 Critical / Important；指出 1 个 Minor：Camera granted + Accessibility denied 时还可补 `handleObservation(_:)` 不发事件/不预热状态机的直接回归测试。
+- 已补充并跑通 `AppControllerTests.testAccessibilityBlockedObservationDoesNotExecuteOrPrimeGestureStateWhilePreviewRuns`，证明 Camera preview 可启动但 Accessibility 缺失期间的 open palm 不会预热控制窗口，授权后不会直接触发滚动。
+- 代码质量 reviewer 发现 1 个 Important 和 2 个 Minor：
+  - Important：用户真实入口是 `prepareCameraAuthorizationAndStartRecognition()` 的 already-determined 分支，不能只测直接 `startRecognition()`。
+  - Minor：`Recheck` prompt 分支应断言 prompt 后刷新权限。
+  - Minor：`SystemPermissionService.promptForAccessibility()` 应直接测试代理到 `AccessibilityTrustProviding.promptForTrust()`。
+- 已补充并跑通对应测试：`testLaunchPreparationStartsPreviewWhenCameraGrantedButAccessibilityMissing`、增强后的 `testPermissionPanelRecheckPromptsForAccessibilityWhenDenied`、`testPromptForAccessibilityDelegatesToAccessibilityProvider`。
+- 代码质量 re-review 已通过：确认上一轮 1 个 Important 和 2 个 Minor 均已关闭，未发现新的 Critical / Important / Minor；残余风险仅为 Codex 未直接观察真实摄像头画面、摄像头指示灯或 macOS Accessibility 授权 UI。
+- 该修复解除“无法看到预览而无法进入手势验证”的实现阻塞，但真实摄像头画面是否出现、摄像头指示灯是否点亮，仍需用户在当前运行的 App 上现场确认。
+
 ## 下一步
 
-继续 Phase 13.2 manual Vision gate。Camera 权限弹窗已经触发并允许，下一步应在当前运行的 App 中继续完成真实手势矩阵；Codex 不能在无人配合下伪造该 gate，在该 gate 完成并记录前，不继续进入 Phase 14。
+继续 Phase 13.2 manual Vision gate。Camera 权限弹窗已经触发并允许，且当前修复已让 Camera 预览不再被 Accessibility 权限挡住。下一步应由用户在当前运行的 App 中确认摄像头画面/指示灯，然后继续完成真实手势矩阵；Codex 不能在无人配合下伪造该 gate，在该 gate 完成并记录前，不继续进入 Phase 14。
 
 ## 阻塞
 
-Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵后，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。Camera 权限弹窗未出现的问题已通过启动授权请求修复解除。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。
+Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前确认摄像头预览/指示灯，并执行真实摄像头/真实手势矩阵后，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。Camera 权限弹窗未出现的问题已通过启动授权请求修复解除；Camera 预览被 Accessibility 权限挡住的问题已通过本次修复解除，但仍等待用户现场确认。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。

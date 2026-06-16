@@ -104,6 +104,8 @@ private final class MenuBarFakePermissionService: PermissionServicing {
     func requestCameraAccess(completion: @escaping (Bool) -> Void) {
         completion(false)
     }
+
+    func promptForAccessibility() {}
 }
 
 private final class MenuBarFakeCameraController: CameraControlling {
