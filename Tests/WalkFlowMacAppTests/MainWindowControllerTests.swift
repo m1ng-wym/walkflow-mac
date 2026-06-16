@@ -140,6 +140,10 @@ private final class MainWindowFakePermissionService: PermissionServicing {
     func snapshot() -> PermissionSnapshot {
         snapshotValue
     }
+
+    func requestCameraAccess(completion: @escaping (Bool) -> Void) {
+        completion(false)
+    }
 }
 
 private final class MainWindowFakeCameraController: CameraControlling {

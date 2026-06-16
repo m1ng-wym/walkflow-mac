@@ -100,6 +100,10 @@ private final class MenuBarFakePermissionService: PermissionServicing {
     func snapshot() -> PermissionSnapshot {
         snapshotValue
     }
+
+    func requestCameraAccess(completion: @escaping (Bool) -> Void) {
+        completion(false)
+    }
 }
 
 private final class MenuBarFakeCameraController: CameraControlling {

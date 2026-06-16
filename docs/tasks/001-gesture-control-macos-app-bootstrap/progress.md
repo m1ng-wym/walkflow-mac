@@ -305,10 +305,46 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - Phase 13.2 manual Vision gate 尚未执行：该 gate 需要用户在设备前按 `plan.md` 的矩阵完成真实手势验证，包括 1 m / 1.5 m / 2 m、normal indoor / dim / backlit、left / right hand、palm facing camera / slight rotation，并记录 accuracy、10 分钟 standby false trigger、10 分钟 voice input accidental interruption 和 median latency。
 - 当前不能声明 Vision gate passed，也不能决定 MediaPipe spike 是否需要；该决定必须基于 Phase 13.2 真实矩阵结果。
 
+### 2026-06-16 Camera Permission Launch Bugfix 进度
+
+- Phase 13.2 启动人工 gate 前，用户反馈 App 没有弹出 Camera 权限框。
+- 已按 systematic debugging 定位根因：`AVCaptureDevice.authorizationStatus(for: .video)` 仍为 `.notDetermined`，`SystemPermissionService` 已有 `requestCameraAccess`，但 `AppDelegate.applicationDidFinishLaunching` 只调用 `refreshPermissions()`、`configureCameraIfPermitted()`、`startRecognition()`，没有在 `.notDetermined` 状态下主动请求 Camera 授权。
+- 已按 TDD 补充 `AppControllerTests.testLaunchPreparationRequestsCameraWhenNotDeterminedThenStartsAfterGrant`：
+  - RED：focused test 先因 `AppController` 缺少 `prepareCameraAuthorizationAndStartRecognition()` 失败。
+  - GREEN：`AppController` 新增启动授权准备流程；当 camera 为 `.notDetermined` 时调用 `permissions.requestCameraAccess`，授权回调后刷新权限、配置 camera，并启动识别；`AppDelegate` 改为走该启动流程。
+- 已同步测试 fake permission services，使 `WalkFlowMacAppTests` 继续编译。
+- 已运行修复版 `./script/build_and_run.sh run`，用户确认 macOS Camera 权限弹窗已出现，并已点击允许。
+- 已用系统日志只读确认 TCC 记录到 `kTCCServiceCamera` / `com.m1ngwym.walkflowmac` 的创建事件；真实 Camera 权限链路已被触发。
+- 已执行 bugfix 验证：
+  - `swift test --filter AppControllerTests/testLaunchPreparationRequestsCameraWhenNotDeterminedThenStartsAfterGrant`：1 个 XCTest，0 failures。
+  - `swift test`：85 个 XCTest，0 failures。
+  - `swift build`：通过。
+  - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - `git diff --check`：通过。
+  - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，冻结计划未修改。
+  - SwiftUI 禁用检查：`No SwiftUI references in Package.swift, Sources, Tests, script, or .codex`。
+  - local-only 检查：`AGENTS.md`、`.superpowers/`、`docs/superpowers/`、`.worktrees/`、`worktrees/` 仍由 `.gitignore` 忽略；`AGENTS.md`、`.superpowers`、`docs/superpowers` 未被 Git 跟踪。
+- Camera permission bugfix code-quality review 初审发现 2 个 Important：
+  - `AVCaptureDevice.requestAccess` completion 不保证回调队列，原实现直接在 completion 内刷新权限、配置 camera、启动识别，线程边界不明确。
+  - 原测试 fake 同步调用 completion，不能证明授权结果回来前不会 configure/start，也不能覆盖真实异步回调。
+- 已按 TDD 修复 review findings：
+  - RED：把 `testLaunchPreparationRequestsCameraWhenNotDeterminedThenStartsAfterGrant` 改为手动保存 completion，先断言 request 后 camera 仍未 configure/start，再从后台队列触发授权完成；当前实现失败在 configure/start 不是主线程。
+  - GREEN：`AppController.prepareCameraAuthorizationAndStartRecognition()` 在 `requestCameraAccess` completion 内显式 `DispatchQueue.main.async` 后再刷新权限、配置 camera、启动识别；focused test 通过，1 个 XCTest，0 failures。
+- review 修复后已重新执行验证：
+  - `swift test`：85 个 XCTest，0 failures。
+  - `swift build`：通过。
+  - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - `git diff --check`：通过。
+  - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，冻结计划未修改。
+  - SwiftUI 禁用检查：`No SwiftUI references in Package.swift, Sources, Tests, script, or .codex`。
+  - local-only 检查通过。
+- Camera permission bugfix code-quality re-review 已通过：reviewer 确认原 2 个 Important 均已关闭，未发现新的 Critical / Important / Minor，Assessment 为 `Ready to merge? Yes`。
+- 该修复只处理启动 Camera 授权请求缺口，不声明 Phase 13.2 Vision gate 已通过；真实手势矩阵仍需继续人工执行。
+
 ## 下一步
 
-进入 Phase 13.2 manual Vision gate。Phase 13.2 需要用户在 Mac 前配合执行真实手势矩阵，Codex 不能在无人配合下伪造该 gate；在该 gate 完成并记录前，不继续进入 Phase 14。
+继续 Phase 13.2 manual Vision gate。Camera 权限弹窗已经触发并允许，下一步应在当前运行的 App 中继续完成真实手势矩阵；Codex 不能在无人配合下伪造该 gate，在该 gate 完成并记录前，不继续进入 Phase 14。
 
 ## 阻塞
 
-Phase 13.2 当前存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵后，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。
+Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵后，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。Camera 权限弹窗未出现的问题已通过启动授权请求修复解除。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。

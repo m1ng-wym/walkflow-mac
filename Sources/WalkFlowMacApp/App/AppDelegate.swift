@@ -21,8 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBarController = MenuBarController(appController: appController, mainWindowController: main, hudWindowController: hud)
 
         appController.refreshPermissions()
-        appController.configureCameraIfPermitted()
-        appController.startRecognition()
+        appController.prepareCameraAuthorizationAndStartRecognition()
         NSApp.activate(ignoringOtherApps: true)
     }
 

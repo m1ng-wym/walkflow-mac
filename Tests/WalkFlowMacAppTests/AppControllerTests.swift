@@ -36,6 +36,41 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(camera.startCount, 1)
     }
 
+    func testLaunchPreparationRequestsCameraWhenNotDeterminedThenStartsAfterGrant() {
+        let camera = FakeCameraController()
+        let permissions = FakePermissionService(snapshot: PermissionSnapshot(camera: .notDetermined, accessibility: .granted, inputMonitoring: .notRequired))
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: permissions,
+            camera: camera,
+            eventOutput: RecordingControlEventOutput()
+        )
+
+        controller.prepareCameraAuthorizationAndStartRecognition()
+
+        XCTAssertEqual(permissions.cameraRequestCount, 1)
+        XCTAssertEqual(camera.configureCount, 0)
+        XCTAssertEqual(camera.startCount, 0)
+
+        let handled = expectation(description: "camera grant handled")
+        DispatchQueue.global().async {
+            permissions.completeCameraRequest(
+                granted: true,
+                snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)
+            )
+            DispatchQueue.main.async {
+                handled.fulfill()
+            }
+        }
+        wait(for: [handled], timeout: 1.0)
+
+        XCTAssertEqual(controller.state.permissions.camera, .granted)
+        XCTAssertEqual(camera.configureCount, 1)
+        XCTAssertEqual(camera.startCount, 1)
+        XCTAssertEqual(camera.configureWasCalledOnMainThread, true)
+        XCTAssertEqual(camera.startWasCalledOnMainThread, true)
+    }
+
     func testAttachPreviewAssignsCameraSessionToPreviewLayer() {
         let camera = FakeCameraController()
         let controller = AppController(
@@ -286,6 +321,8 @@ private final class FakeSettingsStore: SettingsStoring {
 
 private final class FakePermissionService: PermissionServicing {
     var snapshotValue: PermissionSnapshot
+    private var cameraRequestCompletion: ((Bool) -> Void)?
+    private(set) var cameraRequestCount = 0
 
     init(snapshot: PermissionSnapshot) {
         snapshotValue = snapshot
@@ -293,6 +330,16 @@ private final class FakePermissionService: PermissionServicing {
 
     func snapshot() -> PermissionSnapshot {
         snapshotValue
+    }
+
+    func requestCameraAccess(completion: @escaping (Bool) -> Void) {
+        cameraRequestCount += 1
+        cameraRequestCompletion = completion
+    }
+
+    func completeCameraRequest(granted: Bool, snapshot: PermissionSnapshot) {
+        snapshotValue = snapshot
+        cameraRequestCompletion?(granted)
     }
 }
 
@@ -302,12 +349,16 @@ private final class FakeCameraController: CameraControlling {
     private(set) var configureCount = 0
     private(set) var startCount = 0
     private(set) var stopCount = 0
+    private(set) var configureWasCalledOnMainThread: Bool?
+    private(set) var startWasCalledOnMainThread: Bool?
 
     func configure() throws {
+        configureWasCalledOnMainThread = Thread.isMainThread
         configureCount += 1
     }
 
     func start() {
+        startWasCalledOnMainThread = Thread.isMainThread
         startCount += 1
     }
 

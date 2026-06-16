@@ -28,6 +28,7 @@ extension SettingsStore: SettingsStoring {}
 
 protocol PermissionServicing {
     func snapshot() -> PermissionSnapshot
+    func requestCameraAccess(completion: @escaping (Bool) -> Void)
 }
 
 extension SystemPermissionService: PermissionServicing {}
@@ -131,6 +132,27 @@ final class AppController: CameraFrameConsumer {
         }
         if let hud {
             publish(hud)
+        }
+    }
+
+    func prepareCameraAuthorizationAndStartRecognition() {
+        let shouldRequestCamera = withStateLock {
+            state.permissions = permissions.snapshot()
+            return state.permissions.camera == .notDetermined
+        }
+
+        guard shouldRequestCamera else {
+            configureCameraIfPermitted()
+            startRecognition()
+            return
+        }
+
+        permissions.requestCameraAccess { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                self?.refreshPermissions()
+                self?.configureCameraIfPermitted()
+                self?.startRecognition()
+            }
         }
     }
 
