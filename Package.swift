@@ -23,7 +23,10 @@ let package = Package(
                 "WalkFlowCore",
                 .product(name: "Lottie", package: "lottie-spm")
             ],
-            exclude: ["Resources/Info.plist"]
+            exclude: ["Resources/Info.plist"],
+            resources: [
+                .copy("Resources/Lottie")
+            ]
         ),
         .testTarget(
             name: "WalkFlowCoreTests",

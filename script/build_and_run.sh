@@ -5,6 +5,7 @@ MODE="${1:-run}"
 APP_NAME="WalkFlowMac"
 BUNDLE_NAME="WalkFlow-Mac.app"
 BUNDLE_ID="com.m1ngwym.walkflowmac"
+RESOURCE_BUNDLE_NAME="WalkFlowMac_WalkFlowMacApp.bundle"
 CONFIGURATION="debug"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,6 +32,10 @@ stage_bundle() {
     [[ -e "$framework" ]] || continue
     /bin/cp -R "$framework" "$BUNDLE_PATH/Contents/MacOS/"
   done
+  for resource_bundle in "$BUILD_PRODUCTS_DIR"/*.bundle "$BUILD_PRODUCTS_DIR"/*.resources; do
+    [[ -e "$resource_bundle" ]] || continue
+    /bin/cp -R "$resource_bundle" "$BUNDLE_PATH/"
+  done
   /bin/cp "$INFO_PLIST_SOURCE" "$BUNDLE_PATH/Contents/Info.plist"
 }
 
@@ -47,6 +52,7 @@ launch_app() {
 verify_app() {
   sleep 2
   /usr/bin/pgrep -x "$APP_NAME" >/dev/null
+  test -s "$BUNDLE_PATH/$RESOURCE_BUNDLE_NAME/Lottie/alertTriangle.json"
 }
 
 stop_app

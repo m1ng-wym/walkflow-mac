@@ -241,9 +241,30 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
   - 验证后已恢复原先 HUD 保存位置 `X=1290`、`Y=789` 并重启，CGWindow 检查 HUD bounds 回到 `X=1290 Y=57 W=160 H=110`。
 - Phase 10 re-review 已通过：spec reviewer 确认 HUD pin-state 和保存位置恢复验收证据足以关闭 Important；code-quality reviewer 确认 HUD 箭头、保存位置部分越界和菜单硬开关 toggle 的 Important 均已关闭，未发现新的 Critical / Important / Minor。
 
+### 2026-06-16 Phase 11 Lottie And useAnimations Assets 进度
+
+- 已完成 Task 11.1 useAnimations 资源抓取：
+  - 新增 `script/fetch_useanimations_assets.sh`，从 `react-useanimations@2.10.0` 抽取 `alertTriangle`、`arrowDown`、`arrowUp`、`dribbble`、`infinity`、`lock` 六个 Lottie JSON。
+  - 新增 `docs/THIRD_PARTY_NOTICES.md`，记录 `react-useanimations` MIT license 和 `lottie-spm` / Lottie Apache-2.0 license。
+  - 已执行资源脚本和 `npm view react-useanimations@2.10.0 license repository.url`，确认资源存在且 license 口径正确；`tar: Failed to set default locale` 是本机 locale warning，命令 exit 0。
+- 已完成 Task 11.2 原生 Lottie renderer TDD：
+  - RED：新增 `LottieStatusIconViewTests` 后，focused test 因 placeholder `LottieStatusIconView` 缺少 `resourceName` / `resourceURL` 失败，同时 SwiftPM 警告 6 个 JSON 未声明为 resources。
+  - GREEN：`Package.swift` 为 `WalkFlowMacApp` target 增加 `.copy("Resources/Lottie")`；`LottieStatusIconView` 改为 AppKit 原生 `LottieAnimationView`，通过 `Bundle.module` 加载 JSON，loop 状态使用 `.loop`，`unlockOnce` / `lock` 使用 `.playOnce`。
+  - 追加 RED/GREEN：补充 `testShowConfiguresLoopingAndOneShotAnimations`，先证明缺少 renderer 可观察状态，再补内部只读状态，验证 `.arrowUp` loop、`.unlockOnce` playOnce、`.none` 清空动画。
+  - 本地自审追加 RED/GREEN：补充 `testInitialViewStartsEmptyAndHidden`，先证明初始 `.none` 时内部 Lottie view 未隐藏，再用 `clearAnimation()` 修复 init / `.none` 路径，确保 `Standby` 空白状态不显示中心动画。
+  - Phase 11 code-quality review 发现 1 个 Important：`LottieAnimation.filepath(...)` 可能返回 `nil`，旧实现会显示空白并把 `currentIcon` 锁到目标 icon，导致同一 icon 不能重试；已补充 `testFailedAnimationParseClearsAndAllowsRetryForSameIcon` 的 RED/GREEN，改为解析成功后才更新 `currentIcon` 和显示动画，并补充 `testAllMappedIconsLoadThroughNativeRenderer` 覆盖所有映射 icon 的原生 Lottie 解析。
+  - Phase 11 code-quality review 发现 1 个 Minor：第三方 notice 缺少完整 license / 作者信息，且脚本重跑会覆盖补充内容；已增强 `script/fetch_useanimations_assets.sh`，生成 useAnimations 作者、MIT 文本、Lottie Apache-2.0 文本，并在本地 `lottie-spm` checkout 存在时追加上游 `LICENSE` 原文。
+  - 子代理只读检查发现 SwiftPM `Bundle.module` 在 staged `.app` 中查找 `.app/WalkFlowMac_WalkFlowMacApp.bundle`，不是 `Contents/Resources/...`；已先用 `test -s dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json` 证明旧 staging 失败，再修复 `script/build_and_run.sh` 将 resource bundle 复制到 `.app` 根目录，并让 `--verify` 同时检查 Lottie JSON。
+- useAnimations 视觉/行为对比：
+  - 已打开 `https://useanimations.com/` 并核验页面文案：`Alert triangle`、`Infinity`、`Arrow down`、`Arrow up` 标注为 `Loop`，`Lock / Unlock` 标注为 `Click me`，`Dribbble` 标注为 `Hover me`。
+  - 当前实现按上述交互类型映射为 loop 或 playOnce；真实手势状态逐项触发的视觉 E2E 仍需等 Phase 12 之后可以稳定注入/触发状态时继续验证。
+- 已执行 Phase 11 focused tests、全量 `swift test`、`swift build`、`./script/build_and_run.sh --verify`、`git diff --check`、冻结 `plan.md` hash 检查和 SwiftUI 禁用检查；最新 focused `LottieStatusIconViewTests` 为 6 个 XCTest 通过，全量 `swift test` 为 78 个 XCTest 通过，结果写入 `review.md`。
+- Phase 11 spec review 初审发现 1 个 Important：文档仍记录追加自审前的 3/75 测试数量，缺少 `testInitialViewStartsEmptyAndHidden` 的 RED/GREEN 证据。已补充本段和 `review.md`，轻量复审已关闭该 Important。
+- Phase 11 spec re-review 已关闭上一轮 Important，未发现新的 Critical / Important / Minor。Phase 11 code-quality re-review 已关闭上一轮 Important 和 Minor，未发现新的 Critical / Important / Minor，并批准 checkpoint commit。
+
 ## 下一步
 
-创建 Phase 10 checkpoint commit，并继续进入 Phase 11 Lottie And useAnimations Assets。
+创建 Phase 11 checkpoint commit，并继续进入 Phase 12 Main Integration Verification。
 
 ## 阻塞
 

@@ -283,6 +283,29 @@
   - Phase 10 review 修复后，`LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
   - Phase 10 review 修复后，`rg -n "SwiftUI" Package.swift Sources Tests script .codex`：无输出，确认源码、测试、脚本和 Codex run config 未引入 SwiftUI。
   - Phase 10 saved-position restore probe：写入 `defaults write com.m1ngwym.walkflowmac hud.savedOriginX -float 1000` 和 `hud.savedOriginY -float 650` 后执行 `./script/build_and_run.sh --verify`，随后 CoreGraphics window list 显示 HUD `X=1000 Y=196 W=160 H=110`；恢复 `hud.savedOriginX=1290`、`hud.savedOriginY=789` 并重启后，HUD 回到 `X=1290 Y=57 W=160 H=110`。
+- 2026-06-16 Phase 11 TDD 和验证：
+  - `./script/fetch_useanimations_assets.sh && ls Sources/WalkFlowMacApp/Resources/Lottie && test -s ...`：通过，生成 `alertTriangle.json`、`arrowDown.json`、`arrowUp.json`、`dribbble.json`、`infinity.json`、`lock.json`；输出包含 `tar: Failed to set default locale`，但命令 exit 0。
+  - `npm view react-useanimations@2.10.0 license repository.url`：输出 `license = 'MIT'` 和 `git+https://github.com/useAnimations/react-useanimations.git`。
+  - `rg -n "react-useanimations|Lottie|MIT|Apache-2.0" docs/THIRD_PARTY_NOTICES.md`：命中 notice 中的 react-useanimations、MIT、Lottie 和 Apache-2.0 条目。
+  - `swift test --filter LottieStatusIconViewTests` 初始 RED：失败原因符合预期，`LottieStatusIconView` 没有 `resourceName` / `resourceURL`；同时 SwiftPM 警告 6 个 Lottie JSON 未声明为 target resources。
+  - `swift test --filter LottieStatusIconViewTests` 第二个 RED：失败原因符合预期，`LottieStatusIconView` 没有 `hasLoadedAnimation` / `isAnimationVisible` / `currentLoopMode` 可观察入口。
+  - 本地自审 RED：新增 `testInitialViewStartsEmptyAndHidden` 后，`swift test --filter LottieStatusIconViewTests/testInitialViewStartsEmptyAndHidden` 失败 1 个断言，证明初始 `.none` 时内部 Lottie view 未隐藏。
+  - 本地自审修复后 `swift test --filter LottieStatusIconViewTests`：通过，4 个 XCTest，0 failures。
+  - Phase 11 code-quality review 初审：发现 1 个 Important，指出 `LottieAnimation.filepath(...)` 可能返回 `nil`，旧实现会显示空白 icon 且把 `currentIcon` 更新到目标 icon，导致同一 icon 无法重试；另有 1 个 Minor，指出 third-party notice 缺少完整 license / 作者信息且脚本重跑会覆盖补充内容。
+  - code-quality Important 修复 RED：新增 `testFailedAnimationParseClearsAndAllowsRetryForSameIcon` 后，`swift test --filter LottieStatusIconViewTests/testFailedAnimationParseClearsAndAllowsRetryForSameIcon` 因 `animationLoader` initializer 不存在而编译失败。
+  - code-quality Important 修复后 `swift test --filter LottieStatusIconViewTests`：通过，6 个 XCTest，0 failures；新增 `testAllMappedIconsLoadThroughNativeRenderer` 覆盖所有映射 icon 均能被原生 Lottie renderer 解析。
+  - code-quality Important 修复后 full `swift test`：通过，78 个 XCTest，0 failures。
+  - code-quality Minor 修复：`script/fetch_useanimations_assets.sh` 生成 notice 时写入 useAnimations 作者、MIT license text、Lottie Apache-2.0 text，并追加本地 `lottie-spm` 上游 `LICENSE` 原文；`bash -n script/fetch_useanimations_assets.sh && bash -n script/build_and_run.sh` 通过，`./script/fetch_useanimations_assets.sh` 通过并更新 notice。
+  - 修复后 `swift build`：通过，`Build complete`。
+  - 修复后 `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`；该 verify 现在同时检查 `.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json`。
+  - resource staging regression proof：修复前 `test -s dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json` exit 1；修复后 `find dist/WalkFlow-Mac.app -maxdepth 3 ...` 显示 `dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json`。
+  - `git diff --check`：通过，无 whitespace error 输出。
+  - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - `if rg -n "SwiftUI" Package.swift Sources Tests script .codex; then exit 1; else echo ...; fi`：输出 `No SwiftUI references in Package.swift, Sources, Tests, script, or .codex`。
+  - `https://useanimations.com/` 视觉/行为对比记录：页面声明 `Animated icons in Lottie Framework`，并标注 `Alert triangle`、`Infinity`、`Arrow down`、`Arrow up` 为 `Loop`，`Lock / Unlock` 为 `Click me`，`Dribbble` 为 `Hover me`；当前 AppKit Lottie renderer 对应实现为 loop 或 playOnce，并使用原始 JSON 文件。
+  - Phase 11 并行验证说明：一次 `swift test` 与 `swift build` / `./script/build_and_run.sh --verify` 并行触发 SwiftPM `.build` 互斥等待，输出 `Another instance of SwiftPM is already running...` 后正常完成；该输出是 SwiftPM build directory lock 等待，不是测试或构建失败。
+  - Phase 11 spec review 初审：未发现代码/资源 spec 问题；发现 1 个 Important，指出 `progress.md` / `review.md` 未记录 `testInitialViewStartsEmptyAndHidden` 的 RED/GREEN 且测试数量仍为 3/75。已修正为最新证据并完成轻量复审；spec reviewer 确认无 Critical / Important / Minor。
+  - Phase 11 code-quality re-review：未发现新的 Critical / Important / Minor；上一轮 `LottieAnimation.filepath(...)` nil 处理的 Important 已关闭，第三方 notice 的 Minor 已关闭，reviewer 批准 Phase 11 checkpoint commit。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
