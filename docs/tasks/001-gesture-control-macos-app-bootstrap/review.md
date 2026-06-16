@@ -344,6 +344,19 @@
   - Phase 12 interleaving 修复后 telemetry check：`./script/build_and_run.sh --telemetry 2>&1 | rg -m 1 'gestureHUD='` 捕获 `gestureHUD=Permission icon=alertTriangle`。
   - Phase 12 interleaving 修复后 `git diff --check`、冻结 `plan.md` hash 和 SwiftUI 禁用检查均通过。
   - Phase 12 code-quality 第二次 re-review：未发现 Critical / Important / Minor；确认 telemetry transition 去重、日志/HUD presenter 位于 `stateLock` 外、`attachPreview(to:)` 主线程 precondition、`eventOutput.execute` 同步边界和主窗口 preview session 集成断言均已关闭。
+- 2026-06-16 Phase 13 TDD 和验证：
+  - `swift test --filter RecognitionMetricsTests` RED：失败原因符合预期，`RecognitionMetrics` 不存在。
+  - 新增 `Sources/WalkFlowCore/Diagnostics/RecognitionMetrics.swift` 后，`swift test --filter RecognitionMetricsTests` 通过，2 个 XCTest，0 failures。
+  - full `swift test`：通过，84 个 XCTest，0 failures。
+  - `swift build`：通过，`Build complete`。
+  - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`；第一次清理包装命令因误用 zsh 只读变量名 `status` 退出 1，但脚本本体已输出通过，随后使用 `rc` 变量重跑并清理残留进程后 exit 0。
+  - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - `git diff --check`：通过，无 whitespace error 输出。
+  - SwiftUI 禁用检查：输出 `No SwiftUI references in Package.swift, Sources, Tests, script, or .codex`。
+  - local-only 检查：`AGENTS.md`、`.superpowers`、`docs/superpowers` 未被 Git 跟踪，且被 `.gitignore` 忽略。
+  - Phase 13.1 spec review：未发现 Critical / Important / Minor；确认 `RecognitionMetrics` 和两个指定测试均符合冻结计划，且文档没有把 Phase 13.2 写成已完成。
+  - Phase 13.1 code-quality review：未发现 Critical / Important / Minor；确认 `RecognitionMetrics` 是纯 `WalkFlowCore` value type，`accuracy(for:)` 对缺样本 fail-closed，false trigger 语义与当前 actionable gesture 域一致，测试覆盖与 collector 规模匹配。
+  - Phase 13.2 manual Vision gate 尚未执行：该 gate 需要用户在设备前完成 1 m / 1.5 m / 2 m、normal indoor / dim / backlit、left / right hand、palm facing camera / slight rotation 的真实手势矩阵；当前不能声明 Vision gate passed，也不能决定是否需要 MediaPipe spike。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。

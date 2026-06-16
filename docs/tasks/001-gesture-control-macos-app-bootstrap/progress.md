@@ -290,10 +290,24 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - Phase 12 code-quality 第二次 re-review 已通过：确认 telemetry 去重、主线程 precondition、事件执行同步边界和主窗口 preview session 集成断言均已关闭，未发现新的 Critical / Important / Minor。
 - Phase 12 真实摄像头/真实手势人工矩阵尚未完成：该矩阵需要用户在设备前做 open palm、index up、index down、fist、OK pinch、hand lost 等实际动作，并观察滚动、右侧 `Command` 和 HUD；当前不能由 Codex 在无人配合下伪造为已通过。
 
+### 2026-06-16 Phase 13 Recognition Metrics And Performance Gates 进度
+
+- 已完成 Task 13.1 recognition metrics collector TDD：
+  - RED：新增 `RecognitionMetricsTests` 后运行 `swift test --filter RecognitionMetricsTests`，失败原因符合预期，`RecognitionMetrics` 不存在。
+  - GREEN：新增 `Sources/WalkFlowCore/Diagnostics/RecognitionMetrics.swift`，实现按 `GestureKind` 统计准确率和 standby 下 actionable gesture false trigger 计数。
+  - focused test 通过：`swift test --filter RecognitionMetricsTests` 2 个 XCTest，0 failures。
+  - 全量 test 通过：`swift test` 84 个 XCTest，0 failures。
+  - `swift build` 通过。
+- Phase 13.1 review gate 已通过：
+  - spec reviewer 未发现 Critical / Important / Minor，确认实现与计划一致，且文档没有伪造 Phase 13.2 通过。
+  - code-quality reviewer 未发现 Critical / Important / Minor，确认 metrics 语义、测试规模、`Sendable` / `Equatable` / access-control 和文档记录均可接受。
+- Phase 13.2 manual Vision gate 尚未执行：该 gate 需要用户在设备前按 `plan.md` 的矩阵完成真实手势验证，包括 1 m / 1.5 m / 2 m、normal indoor / dim / backlit、left / right hand、palm facing camera / slight rotation，并记录 accuracy、10 分钟 standby false trigger、10 分钟 voice input accidental interruption 和 median latency。
+- 当前不能声明 Vision gate passed，也不能决定 MediaPipe spike 是否需要；该决定必须基于 Phase 13.2 真实矩阵结果。
+
 ## 下一步
 
-创建 Phase 12 checkpoint commit，并继续进入 Phase 13 Recognition Metrics And Performance Gates。真实摄像头/真实手势人工矩阵需要在后续人工 gate 中完成。
+完成 Phase 13.1 spec/code review 和 checkpoint commit；随后进入 Phase 13.2 manual Vision gate。Phase 13.2 需要用户在 Mac 前配合执行真实手势矩阵，Codex 不能在无人配合下伪造该 gate。
 
 ## 阻塞
 
-暂无阻塞。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。
+Phase 13.2 当前存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵后，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。
