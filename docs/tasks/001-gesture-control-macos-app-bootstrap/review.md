@@ -358,6 +358,22 @@
   - Phase 13.1 code-quality review：未发现 Critical / Important / Minor；确认 `RecognitionMetrics` 是纯 `WalkFlowCore` value type，`accuracy(for:)` 对缺样本 fail-closed，false trigger 语义与当前 actionable gesture 域一致，测试覆盖与 collector 规模匹配。
   - Phase 13.1 checkpoint commit：`b3fd7db feat: add recognition metrics` 已创建；未 push。
   - Phase 13.2 manual Vision gate 尚未执行：该 gate 需要用户在设备前完成 1 m / 1.5 m / 2 m、normal indoor / dim / backlit、left / right hand、palm facing camera / slight rotation 的真实手势矩阵；当前不能声明 Vision gate passed，也不能决定是否需要 MediaPipe spike。
+  - Phase 13.2 manual Vision gate execution sheet 已准备但尚未执行：
+    - 启动命令：`./script/build_and_run.sh run`。如需观察 HUD transition，可使用 `./script/build_and_run.sh --telemetry` 并在完成后用 `Ctrl-C` 停止 log stream。
+    - 隐私边界：本 gate 只记录计数、结果和非敏感备注；不提交真实摄像头帧、截图、录屏或私人画面。
+    - 必跑维度：gestures = `Open Palm`、`Index Up`、`Index Down`、`Fist`、`OK Pinch`；distances = `1 m`、`1.5 m`、`2 m`；lighting = `normal indoor`、`dim`、`backlit`；hands = `left`、`right`；angles = `palm facing camera`、`slight rotation`。
+    - 单批记录模板：
+
+      | Batch | Lighting | Hand | Angle | Distance | Gesture | Trials | Correct | Accuracy | Median latency ms | False system action | Notes |
+      | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+      | 未执行 | normal indoor | left | palm facing camera | 1 m | Open Palm | 0 | 0 | 未测 | 未测 | 未测 | 待用户实测 |
+
+    - 聚合口径：每个 gesture x distance 计算 `correct / trials`，必须 `>= 95%`；如果某个 gesture x distance 缺少任一 lighting / hand / angle 覆盖，则该分组不能声明通过。
+    - Standby 误触口径：连续 10 分钟待机，`Index Up`、`Index Down`、`OK Pinch` 导致的系统动作必须为 0；出现 1 次即 gate fail。
+    - 语音输入口径：连续 10 分钟 `Command` 状态不能被其他手势意外中断；第二次 `OK Pinch` 必须稳定结束语音输入；出现 accidental interruption 即 gate fail。
+    - 延迟口径：从手势稳定到状态机输出动作的端到端 median latency 必须 `<= 250 ms`。当前运行时只提供 HUD transition telemetry，尚未自动记录 raw gesture stable-start 和 action-output latency sample；若人工/telemetry 证据无法支撑该 median latency，Phase 13.2 必须保持 unproven，不能进入 Phase 14。
+    - MediaPipe 决策口径：如果任何 pass gate 因 Apple Vision landmarks 不稳定而失败，停止默认实现并等待用户明确批准 MediaPipe spike；不得直接添加 MediaPipe 依赖。如果所有 gate 通过，记录精确结论 `Vision gate passed. MediaPipe not included in runtime.`
+  - Phase 13.2 execution sheet spec review：未发现 Critical / Important / Minor；确认该记录与 `plan.md` Phase 13.2 一致，没有伪造 Vision gate passed，没有允许跳到 Phase 14，也没有引入提交摄像头画面、添加 MediaPipe、修改 `plan.md`、push/deploy 等危险指令。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
