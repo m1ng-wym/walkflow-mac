@@ -356,6 +356,7 @@
   - local-only 检查：`AGENTS.md`、`.superpowers`、`docs/superpowers` 未被 Git 跟踪，且被 `.gitignore` 忽略。
   - Phase 13.1 spec review：未发现 Critical / Important / Minor；确认 `RecognitionMetrics` 和两个指定测试均符合冻结计划，且文档没有把 Phase 13.2 写成已完成。
   - Phase 13.1 code-quality review：未发现 Critical / Important / Minor；确认 `RecognitionMetrics` 是纯 `WalkFlowCore` value type，`accuracy(for:)` 对缺样本 fail-closed，false trigger 语义与当前 actionable gesture 域一致，测试覆盖与 collector 规模匹配。
+  - Phase 13.1 checkpoint commit：`b3fd7db feat: add recognition metrics` 已创建；未 push。
   - Phase 13.2 manual Vision gate 尚未执行：该 gate 需要用户在设备前完成 1 m / 1.5 m / 2 m、normal indoor / dim / backlit、left / right hand、palm facing camera / slight rotation 的真实手势矩阵；当前不能声明 Vision gate passed，也不能决定是否需要 MediaPipe spike。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。

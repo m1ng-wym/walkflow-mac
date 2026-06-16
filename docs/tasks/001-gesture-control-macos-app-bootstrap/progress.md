@@ -301,12 +301,13 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - Phase 13.1 review gate 已通过：
   - spec reviewer 未发现 Critical / Important / Minor，确认实现与计划一致，且文档没有伪造 Phase 13.2 通过。
   - code-quality reviewer 未发现 Critical / Important / Minor，确认 metrics 语义、测试规模、`Sendable` / `Equatable` / access-control 和文档记录均可接受。
+- Phase 13.1 checkpoint commit 已完成：`b3fd7db feat: add recognition metrics`。
 - Phase 13.2 manual Vision gate 尚未执行：该 gate 需要用户在设备前按 `plan.md` 的矩阵完成真实手势验证，包括 1 m / 1.5 m / 2 m、normal indoor / dim / backlit、left / right hand、palm facing camera / slight rotation，并记录 accuracy、10 分钟 standby false trigger、10 分钟 voice input accidental interruption 和 median latency。
 - 当前不能声明 Vision gate passed，也不能决定 MediaPipe spike 是否需要；该决定必须基于 Phase 13.2 真实矩阵结果。
 
 ## 下一步
 
-完成 Phase 13.1 spec/code review 和 checkpoint commit；随后进入 Phase 13.2 manual Vision gate。Phase 13.2 需要用户在 Mac 前配合执行真实手势矩阵，Codex 不能在无人配合下伪造该 gate。
+进入 Phase 13.2 manual Vision gate。Phase 13.2 需要用户在 Mac 前配合执行真实手势矩阵，Codex 不能在无人配合下伪造该 gate；在该 gate 完成并记录前，不继续进入 Phase 14。
 
 ## 阻塞
 
