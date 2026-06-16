@@ -1,9 +1,22 @@
 import AVFoundation
 import Foundation
+import OSLog
 import WalkFlowCore
 
 protocol HUDPresenting: AnyObject {
     func update(_ presentation: HUDPresentation)
+}
+
+protocol HUDTelemetryLogging {
+    func log(_ presentation: HUDPresentation)
+}
+
+struct OSLogHUDTelemetryLogger: HUDTelemetryLogging {
+    private let logger = Logger(subsystem: "com.m1ngwym.walkflowmac", category: "Gesture")
+
+    func log(_ presentation: HUDPresentation) {
+        logger.info("gestureHUD=\(presentation.message, privacy: .public) icon=\(String(describing: presentation.icon), privacy: .public)")
+    }
 }
 
 protocol SettingsStoring {
@@ -51,8 +64,11 @@ final class AppController: CameraFrameConsumer {
     private let classifier: GestureClassifying
     private let hudReducer = HUDStateReducer()
     private let eventOutput: ControlEventOutput
+    private let telemetryLogger: HUDTelemetryLogging
     private var stateMachine: GestureStateMachine
     private let stateLock = NSRecursiveLock()
+    private let telemetryLock = NSLock()
+    private var lastLoggedHUD: HUDPresentation?
 
     weak var hudPresenter: HUDPresenting?
 
@@ -62,7 +78,8 @@ final class AppController: CameraFrameConsumer {
         camera: CameraControlling = CameraSessionController(),
         vision: VisionDetecting = VisionHandPoseProvider(),
         classifier: GestureClassifying = GestureClassifier(),
-        eventOutput: ControlEventOutput = CGEventOutput()
+        eventOutput: ControlEventOutput = CGEventOutput(),
+        telemetryLogger: HUDTelemetryLogging = OSLogHUDTelemetryLogger()
     ) {
         self.settingsStore = settingsStore
         self.permissions = permissions
@@ -70,6 +87,7 @@ final class AppController: CameraFrameConsumer {
         self.vision = vision
         self.classifier = classifier
         self.eventOutput = eventOutput
+        self.telemetryLogger = telemetryLogger
 
         state.settings = settingsStore.load()
         state.permissions = permissions.snapshot()
@@ -78,37 +96,47 @@ final class AppController: CameraFrameConsumer {
     }
 
     func refreshPermissions() {
-        withStateLock {
+        let hud = withStateLock {
             state.permissions = permissions.snapshot()
-            publishHUD(.init(mode: .standby, action: .none, hud: .init(dot: .green, icon: .none, message: "Standby")))
+            return storeHUD(.init(mode: .standby, action: .none, hud: .init(dot: .green, icon: .none, message: "Standby")))
         }
+        publish(hud)
     }
 
     func configureCameraIfPermitted() {
-        withStateLock {
+        let hud = withStateLock {
             state.permissions = permissions.snapshot()
-            publishHUD(.init(mode: .standby, action: .none, hud: .init(dot: .green, icon: .none, message: "Standby")))
+            let standbyHUD = storeHUD(.init(mode: .standby, action: .none, hud: .init(dot: .green, icon: .none, message: "Standby")))
             guard state.permissions.camera == .granted else {
-                return
+                return standbyHUD
             }
 
             do {
                 try camera.configure()
+                return standbyHUD
             } catch {
-                state.latestHUD = .init(dot: .red, icon: .alertTriangle, message: "Camera")
-                publishLatestHUD()
+                return store(.init(dot: .red, icon: .alertTriangle, message: "Camera"))
             }
         }
+        publish(hud)
     }
 
     func startRecognition() {
-        withStateLock {
+        let hud: HUDPresentation? = withStateLock {
             guard state.isEnabled, state.isPaused == false, state.permissions.canControl else {
-                publishHUD(.init(mode: .blocked, action: .none, hud: .init(dot: .red, icon: .alertTriangle, message: "Permission")))
-                return
+                return storeHUD(.init(mode: .blocked, action: .none, hud: .init(dot: .red, icon: .alertTriangle, message: "Permission")))
             }
             camera.start()
+            return nil
         }
+        if let hud {
+            publish(hud)
+        }
+    }
+
+    func attachPreview(to previewView: CameraPreviewView) {
+        precondition(Thread.isMainThread, "Camera preview attachment must run on the main thread.")
+        previewView.attach(session: camera.session)
     }
 
     func stopRecognition() {
@@ -119,10 +147,10 @@ final class AppController: CameraFrameConsumer {
     }
 
     func setEnabled(_ enabled: Bool) {
-        withStateLock {
+        let hud = withStateLock {
             state.isEnabled = enabled
             resetGestureStateMachine()
-            publishHUD(
+            return storeHUD(
                 .init(
                     mode: enabled ? .standby : .disabled,
                     action: .none,
@@ -130,14 +158,16 @@ final class AppController: CameraFrameConsumer {
                 )
             )
         }
+        publish(hud)
     }
 
     func setPaused(_ paused: Bool) {
-        withStateLock {
+        let hud = withStateLock {
             state.isPaused = paused
             resetGestureStateMachine()
-            publishHUD(.init(mode: .standby, action: .none, hud: .init(dot: .green, icon: .none, message: paused ? "Paused" : "Standby")))
+            return storeHUD(.init(mode: .standby, action: .none, hud: .init(dot: .green, icon: .none, message: paused ? "Paused" : "Standby")))
         }
+        publish(hud)
     }
 
     func cameraSession(_ session: CameraSessionController, didOutput sampleBuffer: CMSampleBuffer) {
@@ -148,39 +178,56 @@ final class AppController: CameraFrameConsumer {
     }
 
     func handleObservation(_ observation: GestureObservation) {
-        withStateLock {
+        let hud = withStateLock {
             guard state.permissions.canControl, state.isEnabled, state.isPaused == false else {
-                publishHUD(.init(mode: .blocked, action: .none, hud: .init(dot: .green, icon: .none, message: "Standby")))
-                return
+                return storeHUD(.init(mode: .blocked, action: .none, hud: .init(dot: .green, icon: .none, message: "Standby")))
             }
 
             let output = stateMachine.handle(observation)
             if output.action != .none {
                 eventOutput.execute(output.action, scrollSettings: state.settings.scroll)
             }
-            publishHUD(output)
+            return storeHUD(output)
         }
+        publish(hud)
     }
 
-    private func publishHUD(_ output: GestureStateOutput) {
+    private func storeHUD(_ output: GestureStateOutput) -> HUDPresentation {
         let hud = hudReducer.presentation(
             isEnabled: state.isEnabled,
             isPaused: state.isPaused,
             permissions: state.permissions,
             stateOutput: output
         )
-        state.latestHUD = hud
-        publishLatestHUD()
+        return store(hud)
     }
 
-    private func publishLatestHUD() {
+    private func store(_ hud: HUDPresentation) -> HUDPresentation {
+        state.latestHUD = hud
+        return hud
+    }
+
+    private func publish(_ hud: HUDPresentation) {
+        logIfTransition(hud)
         if Thread.isMainThread {
-            hudPresenter?.update(state.latestHUD)
+            hudPresenter?.update(hud)
         } else {
-            let hud = state.latestHUD
             DispatchQueue.main.async { [weak self] in
                 self?.hudPresenter?.update(hud)
             }
+        }
+    }
+
+    private func logIfTransition(_ hud: HUDPresentation) {
+        telemetryLock.lock()
+        let shouldLog = hud != lastLoggedHUD
+        if shouldLog {
+            lastLoggedHUD = hud
+        }
+        telemetryLock.unlock()
+
+        if shouldLog {
+            telemetryLogger.log(hud)
         }
     }
 

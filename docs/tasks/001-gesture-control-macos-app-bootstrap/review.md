@@ -306,6 +306,44 @@
   - Phase 11 并行验证说明：一次 `swift test` 与 `swift build` / `./script/build_and_run.sh --verify` 并行触发 SwiftPM `.build` 互斥等待，输出 `Another instance of SwiftPM is already running...` 后正常完成；该输出是 SwiftPM build directory lock 等待，不是测试或构建失败。
   - Phase 11 spec review 初审：未发现代码/资源 spec 问题；发现 1 个 Important，指出 `progress.md` / `review.md` 未记录 `testInitialViewStartsEmptyAndHidden` 的 RED/GREEN 且测试数量仍为 3/75。已修正为最新证据并完成轻量复审；spec reviewer 确认无 Critical / Important / Minor。
   - Phase 11 code-quality re-review：未发现新的 Critical / Important / Minor；上一轮 `LottieAnimation.filepath(...)` nil 处理的 Important 已关闭，第三方 notice 的 Minor 已关闭，reviewer 批准 Phase 11 checkpoint commit。
+- 2026-06-16 Phase 12 TDD 和验证：
+  - `swift test --filter AppControllerTests/testAttachPreviewAssignsCameraSessionToPreviewLayer` RED：失败原因符合预期，`AppController` 没有 `attachPreview(to:)`。
+  - 新增 `AppController.attachPreview(to:)` 并在 `MainWindowController` 初始化时接线后，同一 focused test 通过：1 个 XCTest，0 failures。
+  - `./script/build_and_run.sh --telemetry 2>&1 | rg 'gestureHUD='` RED：5 秒内无 `gestureHUD=` 输出，随后中断 telemetry stream，证明手势 HUD logging 尚不存在。
+  - 新增 `OSLog.Logger(subsystem: "com.m1ngwym.walkflowmac", category: "Gesture")` 后，`./script/build_and_run.sh --telemetry 2>&1 | rg -m 1 'gestureHUD='` 捕获 `gestureHUD=Permission icon=alertTriangle`；捕获后中断残留 log stream。
+  - `swift test --filter AppControllerTests`：通过，12 个 XCTest，0 failures。
+  - full `swift test`：通过，79 个 XCTest，0 failures。
+  - `swift build`：通过，`Build complete`。
+  - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - `git diff --check`：通过，无 whitespace error 输出。
+  - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - `if rg -n "SwiftUI" Package.swift Sources Tests script .codex; then exit 1; else echo ...; fi`：输出 `No SwiftUI references in Package.swift, Sources, Tests, script, or .codex`。
+  - Phase 12 manual behavior matrix 尚未执行：open palm、index up、index down、fist、OK pinch、hold OK、release/pinch again 和 hand lost 均需要用户在设备前做真实手势；当前仅完成自动化 attach/logging 证据和 telemetry 可观测性证据，不能声明真实摄像头手势矩阵通过。
+  - Phase 12 spec review：未发现 Critical / Important / Minor；reviewer 确认 manual matrix 未执行不阻塞本次自动化/spec checkpoint，但阻断“真实摄像头/真实手势验收已通过”或最终 E2E 完成声明。
+  - Phase 12 code-quality review 初审：发现 2 个 Important 和 1 个 Minor。Important 1：`gestureHUD` 在 `publishLatestHUD()` 每次发布都记录，不是只记录 transition，且日志在 `stateLock` 持有区内，存在 camera frame path 噪声和性能风险。Important 2：`attachPreview(to:)` 间接修改 AppKit view / preview layer，但 API 缺少主线程边界。Minor：缺少 `MainWindowControllerTests` 层面的 preview session 集成断言。
+  - Phase 12 code-quality 修复 RED：新增 `AppControllerTests.testTelemetryLogsOnlyHUDTransitions` 后，focused test 因 `HUDTelemetryLogging` / `telemetryLogger` 注入点不存在编译失败；新增 `MainWindowControllerTests.testPreviewPaneAttachesAppControllerCameraSession` 后覆盖主窗口实际接线。
+  - Phase 12 code-quality 修复 GREEN：新增 `HUDTelemetryLogging` / `OSLogHUDTelemetryLogger`，`AppController` 通过可注入 telemetry logger 记录 HUD transition；HUD 路径拆分为锁内 `store` 和锁外 `publish`，日志和 HUD presenter update 不再在 `stateLock` 中执行；`attachPreview(to:)` 增加 main-thread precondition。
+  - Phase 12 code-quality 修复后 focused tests：`swift test --filter AppControllerTests/testTelemetryLogsOnlyHUDTransitions --filter MainWindowControllerTests/testPreviewPaneAttachesAppControllerCameraSession` 通过，2 个 XCTest，0 failures。
+  - Phase 12 code-quality 修复后 `swift test --filter AppControllerTests`：通过，13 个 XCTest，0 failures。
+  - Phase 12 code-quality 修复后 `swift test --filter MainWindowControllerTests`：通过，5 个 XCTest，0 failures。
+  - Phase 12 code-quality 修复后 full `swift test`：通过，81 个 XCTest，0 failures。
+  - Phase 12 code-quality 修复后 `swift build`：通过，`Build complete`。
+  - Phase 12 code-quality 修复后 `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - Phase 12 code-quality 修复后 telemetry check：`./script/build_and_run.sh --telemetry 2>&1 | rg -m 1 'gestureHUD='` 捕获 `gestureHUD=Permission icon=alertTriangle`。
+  - Phase 12 code-quality 修复后 `git diff --check`：通过，无 whitespace error 输出。
+  - Phase 12 code-quality 修复后 `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
+  - Phase 12 code-quality 修复后 SwiftUI 禁用检查：输出 `No SwiftUI references in Package.swift, Sources, Tests, script, or .codex`。
+  - Phase 12 code-quality re-review：原 2 个 Important 和 1 个 Minor 均已关闭，但发现新的 1 个 Important：`eventOutput.execute` 被移到锁外后，`setPaused(true)` / `setEnabled(false)` 可能插入“已决定 action”和“真正 post action”之间，导致仍发送一次滚动或右侧 `Command`。
+  - Phase 12 interleaving 修复 RED：新增 `AppControllerTests.testPauseCannotInterleaveBetweenGestureDecisionAndEventOutput`，用阻塞 fake `ControlEventOutput` 复现 pause 插入窗口；当前锁外执行事件时测试失败，断言 `observedPausedAtPost` 为 true。
+  - Phase 12 interleaving 修复 GREEN：`handleObservation()` 将 `eventOutput.execute` 放回 `stateLock` 临界区，保持“决定动作 + 执行动作”在同一同步边界内；HUD telemetry / presenter 发布继续留在锁外。
+  - Phase 12 interleaving 修复后 focused test：`swift test --filter AppControllerTests/testPauseCannotInterleaveBetweenGestureDecisionAndEventOutput` 通过，1 个 XCTest，0 failures。
+  - Phase 12 interleaving 修复后 `swift test --filter AppControllerTests`：通过，14 个 XCTest，0 failures。
+  - Phase 12 interleaving 修复后 full `swift test`：通过，82 个 XCTest，0 failures。
+  - Phase 12 interleaving 修复后 `swift build`：通过，`Build complete`。
+  - Phase 12 interleaving 修复后 `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - Phase 12 interleaving 修复后 telemetry check：`./script/build_and_run.sh --telemetry 2>&1 | rg -m 1 'gestureHUD='` 捕获 `gestureHUD=Permission icon=alertTriangle`。
+  - Phase 12 interleaving 修复后 `git diff --check`、冻结 `plan.md` hash 和 SwiftUI 禁用检查均通过。
+  - Phase 12 code-quality 第二次 re-review：未发现 Critical / Important / Minor；确认 telemetry transition 去重、日志/HUD presenter 位于 `stateLock` 外、`attachPreview(to:)` 主线程 precondition、`eventOutput.execute` 同步边界和主窗口 preview session 集成断言均已关闭。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。

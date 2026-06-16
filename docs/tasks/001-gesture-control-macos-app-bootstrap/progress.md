@@ -262,9 +262,37 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - Phase 11 spec review 初审发现 1 个 Important：文档仍记录追加自审前的 3/75 测试数量，缺少 `testInitialViewStartsEmptyAndHidden` 的 RED/GREEN 证据。已补充本段和 `review.md`，轻量复审已关闭该 Important。
 - Phase 11 spec re-review 已关闭上一轮 Important，未发现新的 Critical / Important / Minor。Phase 11 code-quality re-review 已关闭上一轮 Important 和 Minor，未发现新的 Critical / Important / Minor，并批准 checkpoint commit。
 
+### 2026-06-16 Phase 12 Main Integration Verification 进度
+
+- 已完成 Task 12.1 preview layer / camera session 接线 TDD：
+  - RED：新增 `AppControllerTests.testAttachPreviewAssignsCameraSessionToPreviewLayer` 后，focused test 因 `AppController` 缺少 `attachPreview(to:)` 失败。
+  - GREEN：`AppController.attachPreview(to:)` 调用 `CameraPreviewView.attach(session:)`，`MainWindowController` 初始化时把右侧 camera preview 连接到 `AppController` 持有的 camera session。
+  - focused test 通过：1 个 XCTest，0 failures；随后 `AppControllerTests` 为 12 个 XCTest 通过。
+- 已完成 Task 12.2 telemetry logging RED/GREEN：
+  - RED：在添加日志前运行 `./script/build_and_run.sh --telemetry 2>&1 | rg 'gestureHUD='`，5 秒内无 `gestureHUD=` 输出，随后中断流。
+  - GREEN：`AppController` 增加 `OSLog.Logger(subsystem: "com.m1ngwym.walkflowmac", category: "Gesture")`，每次 `publishLatestHUD()` 输出 `gestureHUD=<message> icon=<icon>`。
+  - telemetry GREEN：运行 `./script/build_and_run.sh --telemetry 2>&1 | rg -m 1 'gestureHUD='` 捕获 `gestureHUD=Permission icon=alertTriangle`。
+- Phase 12 spec review 已通过：未发现 Critical / Important / Minor；确认 manual behavior matrix 未执行不阻塞本阶段自动化 checkpoint，但阻塞最终真实 E2E 完成声明。
+- Phase 12 code-quality review 发现 2 个 Important 和 1 个 Minor：
+  - Important：HUD telemetry 原先每次发布都写日志，可能在 camera frame path 中产生高噪声，并且日志位于 `stateLock` 持有区内。
+  - Important：`attachPreview(to:)` 触碰 AppKit / `AVCaptureVideoPreviewLayer`，但缺少主线程边界。
+  - Minor：`MainWindowControllerTests` 缺少主窗口实际接入 fake camera session 的集成断言。
+- 已按 TDD 修复 review findings：
+  - RED：新增 `AppControllerTests.testTelemetryLogsOnlyHUDTransitions` 后，先因 `HUDTelemetryLogging` / `telemetryLogger` 注入点不存在失败。
+  - GREEN：新增可注入 `HUDTelemetryLogging` / `OSLogHUDTelemetryLogger`，HUD 存储和 HUD 发布拆分为锁内 `store`、锁外 `publish`，并通过 `lastLoggedHUD` 只记录 transition。
+  - 为 `attachPreview(to:)` 增加主线程 precondition，明确 AppKit 线程边界。
+  - 补充 `MainWindowControllerTests.testPreviewPaneAttachesAppControllerCameraSession`，证明主窗口右侧 preview 的 session 来自注入的 camera controller。
+- Phase 12 code-quality re-review 发现新的 1 个 Important：`handleObservation()` 在锁内决定 action 后释放 `stateLock`，再在锁外执行 `eventOutput.execute`，可能允许 `setPaused(true)` / `setEnabled(false)` 插入并仍发出一次系统事件。
+- 已按 TDD 修复新 Important：
+  - RED：新增 `AppControllerTests.testPauseCannotInterleaveBetweenGestureDecisionAndEventOutput`，用阻塞 fake event output 复现 pause 插入“决定动作”和“真正 post”之间，当前锁外执行事件时测试失败。
+  - GREEN：将 `eventOutput.execute` 放回 `stateLock` 临界区，保持“决定动作 + 执行动作”原子；HUD telemetry / presenter 仍在锁外执行。
+- 已执行 Phase 12 review 修复后自动化验证：新增 focused tests 3 个通过；`swift test --filter AppControllerTests` 14 个 XCTest 通过；`swift test --filter MainWindowControllerTests` 5 个 XCTest 通过；全量 `swift test` 82 个 XCTest 通过；`swift build` 通过；`./script/build_and_run.sh --verify` 通过；telemetry 仍可捕获 `gestureHUD=Permission icon=alertTriangle`；`git diff --check` 通过；冻结 `plan.md` hash 未变；SwiftUI 禁用检查通过。
+- Phase 12 code-quality 第二次 re-review 已通过：确认 telemetry 去重、主线程 precondition、事件执行同步边界和主窗口 preview session 集成断言均已关闭，未发现新的 Critical / Important / Minor。
+- Phase 12 真实摄像头/真实手势人工矩阵尚未完成：该矩阵需要用户在设备前做 open palm、index up、index down、fist、OK pinch、hand lost 等实际动作，并观察滚动、右侧 `Command` 和 HUD；当前不能由 Codex 在无人配合下伪造为已通过。
+
 ## 下一步
 
-创建 Phase 11 checkpoint commit，并继续进入 Phase 12 Main Integration Verification。
+创建 Phase 12 checkpoint commit，并继续进入 Phase 13 Recognition Metrics And Performance Gates。真实摄像头/真实手势人工矩阵需要在后续人工 gate 中完成。
 
 ## 阻塞
 

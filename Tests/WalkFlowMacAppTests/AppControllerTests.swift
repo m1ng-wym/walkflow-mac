@@ -36,6 +36,22 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(camera.startCount, 1)
     }
 
+    func testAttachPreviewAssignsCameraSessionToPreviewLayer() {
+        let camera = FakeCameraController()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: camera,
+            eventOutput: RecordingControlEventOutput()
+        )
+        let preview = CameraPreviewView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        preview.wantsLayer = true
+
+        controller.attachPreview(to: preview)
+
+        XCTAssertTrue(preview.previewLayer.session === camera.session)
+    }
+
     func testDisablingAppPublishesLockedHUD() {
         let hud = RecordingHUDPresenter()
         let controller = AppController(
@@ -50,6 +66,30 @@ final class AppControllerTests: XCTestCase {
 
         XCTAssertEqual(hud.presentations.last?.dot, .red)
         XCTAssertEqual(hud.presentations.last?.icon, .lock)
+    }
+
+    func testTelemetryLogsOnlyHUDTransitions() {
+        let telemetry = RecordingHUDTelemetryLogger()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: FakeCameraController(),
+            eventOutput: RecordingControlEventOutput(),
+            telemetryLogger: telemetry
+        )
+
+        controller.refreshPermissions()
+        controller.refreshPermissions()
+        controller.setEnabled(false)
+        controller.setEnabled(false)
+
+        XCTAssertEqual(
+            telemetry.presentations,
+            [
+                HUDPresentation(dot: .green, icon: .none, message: "Standby"),
+                HUDPresentation(dot: .red, icon: .lock, message: "Disabled")
+            ]
+        )
     }
 
     func testDisabledAppDoesNotExecuteGestureActions() {
@@ -201,6 +241,42 @@ final class AppControllerTests: XCTestCase {
 
         XCTAssertEqual(output.actions, [.scrollUp(step: .single)])
     }
+
+    func testPauseCannotInterleaveBetweenGestureDecisionAndEventOutput() {
+        let output = InterleavingControlEventOutput()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: FakeCameraController(),
+            eventOutput: output
+        )
+        output.controller = controller
+
+        controller.handleObservation(.init(kind: .openPalm, confidence: 1, timestamp: 0))
+        controller.handleObservation(.init(kind: .openPalm, confidence: 1, timestamp: 0.31))
+        controller.handleObservation(.init(kind: .indexUp, confidence: 1, timestamp: 1.00))
+
+        let gestureDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            controller.handleObservation(.init(kind: .indexUp, confidence: 1, timestamp: 1.31))
+            gestureDone.signal()
+        }
+
+        XCTAssertEqual(output.entered.wait(timeout: .now() + .seconds(2)), .success)
+
+        let pauseDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            controller.setPaused(true)
+            pauseDone.signal()
+        }
+
+        Thread.sleep(forTimeInterval: 0.05)
+        output.release.signal()
+
+        XCTAssertEqual(gestureDone.wait(timeout: .now() + .seconds(2)), .success)
+        XCTAssertEqual(pauseDone.wait(timeout: .now() + .seconds(2)), .success)
+        XCTAssertFalse(output.observedPausedAtPost)
+    }
 }
 
 private final class FakeSettingsStore: SettingsStoring {
@@ -253,5 +329,26 @@ private final class RecordingHUDPresenter: HUDPresenting {
 
     func update(_ presentation: HUDPresentation) {
         presentations.append(presentation)
+    }
+}
+
+private final class RecordingHUDTelemetryLogger: HUDTelemetryLogging {
+    private(set) var presentations: [HUDPresentation] = []
+
+    func log(_ presentation: HUDPresentation) {
+        presentations.append(presentation)
+    }
+}
+
+private final class InterleavingControlEventOutput: ControlEventOutput {
+    weak var controller: AppController?
+    let entered = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    private(set) var observedPausedAtPost = false
+
+    func execute(_ action: ControlAction, scrollSettings: ScrollSettings) {
+        entered.signal()
+        _ = release.wait(timeout: .now() + .seconds(2))
+        observedPausedAtPost = controller?.state.isPaused ?? false
     }
 }

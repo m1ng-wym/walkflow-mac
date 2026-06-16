@@ -30,6 +30,17 @@ final class MainWindowControllerTests: XCTestCase {
         XCTAssertTrue(previewContainer.subviews.contains { $0 is CameraPreviewView })
     }
 
+    func testPreviewPaneAttachesAppControllerCameraSession() throws {
+        let camera = MainWindowFakeCameraController()
+        let controller = MainWindowController(appController: makeController(camera: camera))
+        let window = try XCTUnwrap(controller.window)
+        let split = try XCTUnwrap(window.contentView as? NSSplitView)
+        let previewContainer = try XCTUnwrap(split.arrangedSubviews.last as? PreviewContainerView)
+        let previewView = try XCTUnwrap(previewContainer.subviews.compactMap { $0 as? CameraPreviewView }.first)
+
+        XCTAssertTrue(previewView.previewLayer.session === camera.session)
+    }
+
     func testControlPanelButtonsDriveAppControllerState() throws {
         let appController = makeController()
         let controlPanel = try controlPanel(from: MainWindowController(appController: appController))
@@ -60,10 +71,24 @@ final class MainWindowControllerTests: XCTestCase {
     }
 
     private func makeController(permissions: MainWindowFakePermissionService) -> AppController {
+        makeController(permissions: permissions, camera: MainWindowFakeCameraController())
+    }
+
+    private func makeController(camera: MainWindowFakeCameraController) -> AppController {
+        makeController(
+            permissions: MainWindowFakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: camera
+        )
+    }
+
+    private func makeController(
+        permissions: MainWindowFakePermissionService,
+        camera: MainWindowFakeCameraController
+    ) -> AppController {
         AppController(
             settingsStore: MainWindowFakeSettingsStore(),
             permissions: permissions,
-            camera: MainWindowFakeCameraController(),
+            camera: camera,
             eventOutput: MainWindowRecordingControlEventOutput()
         )
     }

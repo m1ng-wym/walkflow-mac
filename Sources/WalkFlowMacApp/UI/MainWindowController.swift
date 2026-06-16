@@ -13,6 +13,7 @@ final class MainWindowController: NSWindowController {
 
         let controlPanel = ControlPanelView(appController: appController)
         let preview = PreviewContainerView(previewView: previewView)
+        appController.attachPreview(to: previewView)
         root.addArrangedSubview(controlPanel)
         root.addArrangedSubview(preview)
         controlPanel.widthAnchor.constraint(equalToConstant: 220).isActive = true
