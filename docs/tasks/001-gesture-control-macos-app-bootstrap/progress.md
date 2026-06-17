@@ -415,11 +415,15 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
   - 最终 staged app 的 current designated requirement：`cdhash H"f98a3fb31a3837ef001bf2438b98173140eaf071"`。
 - 临时本地证书实验曾触发系统“证书信任设置”授权弹窗；已明确要求用户点“取消”，并中断命令。后续不在未获明确批准时修改系统证书信任或用户 keychain。
 - 当前操作策略：完成本轮最终 build/stage 验证后，用户需要在系统设置中移除旧的 WalkFlow-Mac Accessibility 条目，并按当前 `dist/WalkFlow-Mac.app` 重新添加/启用一次；之后用 `./script/build_and_run.sh --launch-existing` 启动，不再 rebuild，继续 Phase 13.2 手势 smoke。
+- 用户已在系统设置中开启当前 `WalkFlow-Mac` Accessibility 开关。
+- 已用 `./script/build_and_run.sh --launch-existing` 重新启动当前 app，`codesign -dr - dist/WalkFlow-Mac.app` 前后保持同一个 `cdhash H"f98a3fb31a3837ef001bf2438b98173140eaf071"`，确认没有 rebuild。
+- 已检查最近 TCC 日志：未再出现 `Failed to match existing code requirement`。
+- 已通过屏幕状态确认 HUD 不再显示 `Alert triangle` 权限图标；当前 HUD 为红点空白，符合非权限阻塞/手部未进入控制窗口状态。下一步进入真实手势 smoke：先五指张开稳定 0.2-0.4 秒，观察是否进入 Ready/Infinity 或至少从红点空白切到可控状态。
 
 ## 下一步
 
-先完成 Accessibility TCC code requirement mismatch 的本地验证和文档收口。完成最终 `swift test`、`swift build`、`./script/build_and_run.sh --verify` 后，不要再 rebuild；由用户移除并重新添加当前 `dist/WalkFlow-Mac.app` 到 Accessibility，再用 `./script/build_and_run.sh --launch-existing` 启动现有包。若 HUD 从红点 `Permission` 进入绿点 standby，再继续 Phase 13.2 manual Vision gate：近距离 smoke `Open Palm` 进入 ready、`Index Up` / `Index Down` 滚动、`Fist` 停止、`OK Pinch` 触发右侧 `Command`，随后扩大到 1 m / 1.5 m / 2 m 的真实手势矩阵。
+继续 Phase 13.2 manual Vision gate。当前应避免运行会 rebuild 的 `run` / `--verify` / `--logs` / `--telemetry` 模式；若需要重启，只用 `./script/build_and_run.sh --launch-existing`。下一步应在当前运行的 App 中先做近距离 smoke：`Open Palm` 进入 ready、`Index Up` / `Index Down` 滚动、`Fist` 停止、`OK Pinch` 触发右侧 `Command`，再扩大到 1 m / 1.5 m / 2 m 的真实手势矩阵。
 
 ## 阻塞
 
-Phase 13.2 当前仍存在真实外部阻塞：Accessibility UI 中“已开启”不等于当前 ad-hoc build 已被 TCC 信任。必须先按当前 staged app 重新建立 Accessibility 授权，并避免授权后再次 rebuild。该阻塞解除后，仍必须由用户在设备前执行真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
+Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。Accessibility TCC code requirement mismatch 当前未再复现，但只要重新 build/stage，ad-hoc `cdhash` 仍可能改变并要求重新授权。
