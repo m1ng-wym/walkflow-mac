@@ -91,7 +91,7 @@ final class LottieStatusIconView: NSView {
             return nil
         }
 
-        return Bundle.module.url(forResource: resourceName, withExtension: "json", subdirectory: "Lottie")
+        return LottieResourceLocator.resourceURL(forResourceName: resourceName)
     }
 
     private func clearAnimation() {

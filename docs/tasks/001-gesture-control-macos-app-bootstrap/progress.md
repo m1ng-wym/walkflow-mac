@@ -254,7 +254,7 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
   - 本地自审追加 RED/GREEN：补充 `testInitialViewStartsEmptyAndHidden`，先证明初始 `.none` 时内部 Lottie view 未隐藏，再用 `clearAnimation()` 修复 init / `.none` 路径，确保 `Standby` 空白状态不显示中心动画。
   - Phase 11 code-quality review 发现 1 个 Important：`LottieAnimation.filepath(...)` 可能返回 `nil`，旧实现会显示空白并把 `currentIcon` 锁到目标 icon，导致同一 icon 不能重试；已补充 `testFailedAnimationParseClearsAndAllowsRetryForSameIcon` 的 RED/GREEN，改为解析成功后才更新 `currentIcon` 和显示动画，并补充 `testAllMappedIconsLoadThroughNativeRenderer` 覆盖所有映射 icon 的原生 Lottie 解析。
   - Phase 11 code-quality review 发现 1 个 Minor：第三方 notice 缺少完整 license / 作者信息，且脚本重跑会覆盖补充内容；已增强 `script/fetch_useanimations_assets.sh`，生成 useAnimations 作者、MIT 文本、Lottie Apache-2.0 文本，并在本地 `lottie-spm` checkout 存在时追加上游 `LICENSE` 原文。
-  - 子代理只读检查发现 SwiftPM `Bundle.module` 在 staged `.app` 中查找 `.app/WalkFlowMac_WalkFlowMacApp.bundle`，不是 `Contents/Resources/...`；已先用 `test -s dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json` 证明旧 staging 失败，再修复 `script/build_and_run.sh` 将 resource bundle 复制到 `.app` 根目录，并让 `--verify` 同时检查 Lottie JSON。
+  - 子代理只读检查发现 SwiftPM `Bundle.module` 在 staged `.app` 中查找 `.app/WalkFlowMac_WalkFlowMacApp.bundle`，不是 `Contents/Resources/...`；当时先用 `test -s dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json` 证明旧 staging 失败，再临时修复为把 resource bundle 复制到 `.app` 根目录。该 Phase 11 历史路径已在 2026-06-18 长期签名修复中迁移为当前标准路径 `Contents/Resources/Lottie`。
 - useAnimations 视觉/行为对比：
   - 已打开 `https://useanimations.com/` 并核验页面文案：`Alert triangle`、`Infinity`、`Arrow down`、`Arrow up` 标注为 `Loop`，`Lock / Unlock` 标注为 `Click me`，`Dribbble` 标注为 `Hover me`。
   - 当前实现按上述交互类型映射为 loop 或 playOnce；真实手势状态逐项触发的视觉 E2E 仍需等 Phase 12 之后可以稳定注入/触发状态时继续验证。
@@ -420,10 +420,55 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 已检查最近 TCC 日志：未再出现 `Failed to match existing code requirement`。
 - 已通过屏幕状态确认 HUD 不再显示 `Alert triangle` 权限图标；当前 HUD 为红点空白，符合非权限阻塞/手部未进入控制窗口状态。下一步进入真实手势 smoke：先五指张开稳定 0.2-0.4 秒，观察是否进入 Ready/Infinity 或至少从红点空白切到可控状态。
 
+### 2026-06-18 长期本地开发签名方案进度
+
+- 用户要求按推荐的长期开发方案实现稳定本地开发签名，避免 ad-hoc `cdhash` 每次 rebuild 后反复破坏 Accessibility/TCC 授权。
+- 已确认当前本机仍无可用 codesigning identity：`security find-identity -p codesigning -v` 输出 `0 valid identities found`。
+- 因缺少 `Apple Development` 或其他证书型 signing identity，本轮不能实际生成“证书签名且 designated requirement 非纯 `cdhash`”的最终本地 app；当前已实现脚本能力、失败保护和可签名 bundle 布局，不擅自创建自签证书、不导入 keychain、不修改系统 trust settings。
+- 已按 TDD 补充签名脚本测试：
+  - `BuildRunScriptTests.testBuildAndStageSignsAfterStagingWhenIdentityIsConfigured` 覆盖 `build_app -> stage_bundle -> sign_staged_app_if_configured` 顺序，并确认脚本暴露 `WALKFLOW_CODESIGN_IDENTITY`、`WALKFLOW_CODESIGN_KEYCHAIN`、debug entitlements、`security find-identity` 和 `codesign`。
+  - `BuildRunScriptTests.testCertificateSigningCanBeRequiredForVerification` 覆盖 `WALKFLOW_REQUIRE_CERT_SIGNING=1` 的强制证书签名入口，并确认该 preflight 在 build/stage 前执行。
+  - `BuildRunScriptTests.testUnsignedDebugPathRepairsAdHocSignatureAfterRpathChange` 覆盖无证书 debug 路径会在 `install_name_tool` 修改 rpath 后执行 ad-hoc 重签，避免 app 因 invalid code signature 崩溃。
+  - `BuildRunScriptTests.testConfiguredSigningVerifiesNestedCodeAndRejectsCdhashOnlyRequirements` 覆盖配置证书签名时的顺序为 `validate_codesign_identity -> sign_nested_code -> sign_app_bundle -> verify_signed_app_bundle`，并确认 signed verification 会检查 nested code 且拒绝纯 `cdhash` requirement。
+  - `BuildRunScriptTests.testIdentityValidationAvoidsSubstringMatching` 覆盖 identity 校验不再使用简单子串匹配，而是支持 40 位 SHA-1 或完整 quoted common name 精确匹配。
+  - `BuildRunScriptTests.testStageBundleUsesStandardSignedResourceLocation` 覆盖 staged app 使用标准 `Contents/Frameworks` 和 `Contents/Resources/Lottie`，不再把 Lottie framework 放到 `Contents/MacOS`，也不再把 SwiftPM resource bundle 复制到 `.app` 根目录。
+  - `LottieStatusIconViewTests.testResourceLocatorPrefersStandardMainBundleResourcePath` 和 `testResourceLocatorFallsBackToSwiftPMModuleBundle` 覆盖运行时优先从 `.app/Contents/Resources/Lottie` 查找资源，测试/SwiftPM 场景回退到 `Bundle.module`。
+- 已完成 GREEN 实现：
+  - `script/build_and_run.sh` 支持 `WALKFLOW_CODESIGN_IDENTITY`、可选 `WALKFLOW_CODESIGN_KEYCHAIN`、可选 `WALKFLOW_CODESIGN_ENTITLEMENTS` 和 `WALKFLOW_REQUIRE_CERT_SIGNING`。
+  - `script/build_and_run.sh` 先执行 signing preflight，再 build/stage；`WALKFLOW_REQUIRE_CERT_SIGNING=1` 但未设置 identity 时直接退出，不会留下半 staged invalid bundle。
+  - staged app 的 Lottie framework 改为 `dist/WalkFlow-Mac.app/Contents/Frameworks/Lottie.framework`，并用 `install_name_tool -add_rpath @executable_path/../Frameworks` 给 executable 增加标准 app bundle framework rpath。
+  - 无证书默认 debug 路径会对 nested framework 和 app 进行 ad-hoc 重签，并执行 `codesign --verify --strict --verbose=4`，保证 app 可启动；该路径的 designated requirement 仍是纯 `cdhash`，只用于本地 debug fallback，不是长期 TCC 稳定方案。
+  - 配置 identity 时先验证 identity 存在，再签 nested `.framework`，最后签 `dist/WalkFlow-Mac.app` 并执行 signed verification。
+  - `verify_signed_app_bundle()` 会验证 nested code 和 app 本体，并拒绝任何 `codesign -dr -` 仍为 `designated => cdhash` 的结果，避免误以为 ad-hoc 签名已经解决 TCC 稳定身份问题。
+  - 新增 `script/WalkFlowMac.debug.entitlements`，当前只包含 debug 所需 `com.apple.security.get-task-allow`。
+  - Lottie 资源 staging 改为 `dist/WalkFlow-Mac.app/Contents/Resources/Lottie/*.json`，并新增 `LottieResourceLocator`，让真实 app 使用标准 bundle 资源目录，测试环境仍能回退 `Bundle.module`。
+- 已验证不存在 identity 时脚本 fail-fast：`WALKFLOW_CODESIGN_IDENTITY='Definitely Missing WalkFlow Identity' ./script/build_and_run.sh --verify` 退出码为 `2`，输出 `Configured WALKFLOW_CODESIGN_IDENTITY was not found`。
+- 已验证强制证书签名模式 fail-fast：`WALKFLOW_REQUIRE_CERT_SIGNING=1 ./script/build_and_run.sh --verify` 退出码为 `2`，输出 `Certificate-backed signing is required, but WALKFLOW_CODESIGN_IDENTITY is not set.`，且失败发生在 build/stage 之前。
+- 已验证无 identity 默认 debug 工作流仍可用：`./script/build_and_run.sh --verify` 通过，输出 `Verified WalkFlowMac is running.`。
+- 已验证 staged app 当前布局和签名状态：
+  - `dist/WalkFlow-Mac.app/Contents/Frameworks/Lottie.framework` 存在。
+  - `dist/WalkFlow-Mac.app/Contents/MacOS/Lottie.framework` 不存在。
+  - `dist/WalkFlow-Mac.app/Contents/Resources/Lottie/alertTriangle.json` 存在。
+  - `dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle` 不存在。
+  - `codesign --verify --strict --verbose=4 dist/WalkFlow-Mac.app` 通过。
+  - `codesign -dr - dist/WalkFlow-Mac.app` 当前仍输出 `designated => cdhash H"a06af101fc21f97d96bec7c483217beb9f290cf6"`，这是无证书 fallback 的预期限制。
+- 已执行自动化验证：
+  - `swift test --filter BuildRunScriptTests`：9 个 XCTest，0 failures。
+  - `swift test --filter LottieStatusIconViewTests`：8 个 XCTest，0 failures。
+  - 全量 `swift test`：101 个 XCTest，0 failures。
+  - `swift build -c debug --product WalkFlowMac`：通过。
+  - `plutil -lint script/WalkFlowMac.debug.entitlements`：通过。
+  - `bash -n script/build_and_run.sh`：通过。
+  - `git diff --check`：通过。
+  - `rg -n "SwiftUI|import SwiftUI" Sources Tests Package.swift script .codex`：无输出。
+  - 冻结 `plan.md` hash 仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`。
+
 ## 下一步
 
-继续 Phase 13.2 manual Vision gate。当前应避免运行会 rebuild 的 `run` / `--verify` / `--logs` / `--telemetry` 模式；若需要重启，只用 `./script/build_and_run.sh --launch-existing`。下一步应在当前运行的 App 中先做近距离 smoke：`Open Palm` 进入 ready、`Index Up` / `Index Down` 滚动、`Fist` 停止、`OK Pinch` 触发右侧 `Command`，再扩大到 1 m / 1.5 m / 2 m 的真实手势矩阵。
+先完成长期本地开发签名收尾 review 和本地 commit。随后需要用户在本机准备一个可用的证书型 codesigning identity，优先 `Apple Development: ...`；准备完成后用 `WALKFLOW_CODESIGN_IDENTITY='Apple Development: ...' ./script/build_and_run.sh --verify` 生成证书签名 app，并重新添加/启用 Accessibility 一次。只有 `codesign -dr - dist/WalkFlow-Mac.app` 不再是纯 `cdhash` 后，才能恢复“rebuild 后不反复掉 Accessibility 授权”的长期验证。完成后继续 Phase 13.2 manual Vision gate。
 
 ## 阻塞
 
-Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。Accessibility TCC code requirement mismatch 当前未再复现，但只要重新 build/stage，ad-hoc `cdhash` 仍可能改变并要求重新授权。
+Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
+
+长期签名当前存在外部阻塞：本机 `security find-identity -p codesigning -v` 返回 `0 valid identities found`，因此还不能实际产出证书型 signed app。脚本已具备稳定签名路径，但需要用户先通过 Xcode/Apple Developer account/keychain 准备 `Apple Development` signing identity。

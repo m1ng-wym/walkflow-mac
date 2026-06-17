@@ -97,6 +97,17 @@
 - 本轮计划审计发现并修复手势逻辑 bug：连续滚动时手势变化必须发出 `stopContinuousScroll`，不能先清空连续状态；`indexDown` 分类不能复用向上伸直判断，测试 fixture 和分类器逻辑已同步强化。
 - 本轮计划审计发现并修复验收证据不足：性能门槛由单次 `ps` 快照改为 10 分钟 60 次采样并计算平均 CPU / 最大 RSS；最终 review range 改为使用 Phase 0 记录的 `WALKFLOW_IMPL_BASE_SHA`，避免把规划提交混入实现审查范围。
 - 本轮计划审计发现并修复危险/误导性脚本口径：`/bin/rm -rf` 删除改为受控路径清理；`Docs/` 路径统一为 `docs/THIRD_PARTY_NOTICES.md`；最终 SwiftUI 检查拆分为源码阻断检查与文档占位检查，避免把“禁止 SwiftUI”的文档文字误判为源代码违规。
+- 2026-06-18 长期本地开发签名方案 review 初审：
+  - 签名/entitlements reviewer 未发现 Critical；发现 2 个 Important 和 4 个 Minor。Important 1：`WALKFLOW_CODESIGN_IDENTITY` 为空时脚本仍允许纯 `cdhash` debug bundle，缺少强制证书签名模式。Important 2：Lottie framework 仍放在 `Contents/MacOS`，长期 app bundle 布局不理想。Minor：nested code 缺独立 verification、identity 校验为子串匹配、debug entitlements 需明确不是分发 entitlements、新增文件提交前必须纳入。
+  - verification/documentation reviewer 未发现 Critical；发现 2 个 Important。Important 1：签名脚本测试过于静态，未覆盖强制证书签名、无证书 fallback、identity 校验、nested verification 等关键分支。Important 2：`progress.md` / `review.md` 需要同步记录当前稳定签名实现和标准 Lottie 路径变更。
+- 2026-06-18 review 修复：
+  - 新增 `WALKFLOW_REQUIRE_CERT_SIGNING=1`。该模式未设置 `WALKFLOW_CODESIGN_IDENTITY` 时在 build/stage 前 fail-fast，避免留下 invalid staged bundle。
+  - 无证书默认 debug 路径改为在 `install_name_tool` 修改 rpath 后对 nested framework 和 app bundle 做 ad-hoc 重签，并执行 strict verification；该路径可启动，但仍是纯 `cdhash`，不作为长期 TCC 稳定方案。
+  - Lottie framework 从 `Contents/MacOS` 迁移到 `Contents/Frameworks`，并给 executable 添加 `@executable_path/../Frameworks` rpath。
+  - 证书签名路径现在会验证 nested code 和 app 本体，并拒绝任何 `codesign -dr -` 仍为纯 `cdhash` 的 nested framework 或 app。
+  - identity 校验改为支持 40 位 SHA-1 hash 或完整 quoted common name 精确匹配，不再使用简单子串匹配。
+  - 补充 `BuildRunScriptTests` 覆盖强制证书签名、ad-hoc debug 重签、nested code verification、identity 精确匹配和标准 `Contents/Frameworks` / `Contents/Resources/Lottie` 布局。
+  - 补充文档记录当前机器 `0 valid identities found`，因此证书型 signed app 尚未实际产出；`script/WalkFlowMac.debug.entitlements` 是本地 debug entitlements，不是分发 entitlements，也不声明 sandbox/camera/automation 权限。
 
 ## 验证命令和结果
 
@@ -297,8 +308,8 @@
   - code-quality Important 修复后 full `swift test`：通过，78 个 XCTest，0 failures。
   - code-quality Minor 修复：`script/fetch_useanimations_assets.sh` 生成 notice 时写入 useAnimations 作者、MIT license text、Lottie Apache-2.0 text，并追加本地 `lottie-spm` 上游 `LICENSE` 原文；`bash -n script/fetch_useanimations_assets.sh && bash -n script/build_and_run.sh` 通过，`./script/fetch_useanimations_assets.sh` 通过并更新 notice。
   - 修复后 `swift build`：通过，`Build complete`。
-  - 修复后 `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`；该 verify 现在同时检查 `.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json`。
-  - resource staging regression proof：修复前 `test -s dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json` exit 1；修复后 `find dist/WalkFlow-Mac.app -maxdepth 3 ...` 显示 `dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json`。
+  - 修复后 `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`；该 Phase 11 verify 当时检查 `.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json`。该历史 staging 路径已在 2026-06-18 长期签名修复中迁移为当前标准路径 `Contents/Resources/Lottie/alertTriangle.json`。
+  - resource staging regression proof：修复前 `test -s dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json` exit 1；修复后 `find dist/WalkFlow-Mac.app -maxdepth 3 ...` 当时显示 `dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle/Lottie/alertTriangle.json`。该路径仅记录 Phase 11 历史过程，不代表当前 bundle 布局。
   - `git diff --check`：通过，无 whitespace error 输出。
   - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，确认冻结计划文件未修改。
   - `if rg -n "SwiftUI" Package.swift Sources Tests script .codex; then exit 1; else echo ...; fi`：输出 `No SwiftUI references in Package.swift, Sources, Tests, script, or .codex`。
@@ -407,6 +418,29 @@
   - Security/trust safety note：临时本地证书实验触发“证书信任设置”系统弹窗后已要求用户取消，并中断命令。当前修复不创建证书、不导入 keychain、不修改系统 trust settings。后续如要稳定 signing identity，必须另行取得用户明确授权和可审计方案。
   - Current manual unblock procedure：完成最终 build/stage 后，不再运行会 rebuild 的 `run` / `--verify` / `--telemetry`。用户需在系统设置中移除旧 WalkFlow-Mac Accessibility 条目，并重新添加当前 `dist/WalkFlow-Mac.app`；随后使用 `./script/build_and_run.sh --launch-existing` 启动同一份 app bits。如果 HUD 进入绿点 standby，才继续 Phase 13.2 gesture smoke。该 procedure 不是最终发布签名方案，只是当前无 codesigning identity 的本地 debug 验证路径。
   - Accessibility TCC mismatch user-side confirmation：用户已在系统设置中开启当前 `WalkFlow-Mac` Accessibility 开关。使用 `./script/build_and_run.sh --launch-existing` 重启后，`codesign -dr - dist/WalkFlow-Mac.app` 前后仍为 `cdhash H"f98a3fb31a3837ef001bf2438b98173140eaf071"`，最近 TCC 日志未再出现 `Failed to match existing code requirement`。屏幕状态显示 HUD 为红点空白而非 `Alert triangle`，因此当前不再是 Permission alert 阻塞；仍需用户执行真实手势 smoke 才能判断 Vision/classifier/state-machine 路径是否通过。
+  - 2026-06-18 长期本地开发签名 TDD RED：
+    - `swift test --filter BuildRunScriptTests` 新增签名脚本测试后先失败 9 个断言，证明脚本缺少 `WALKFLOW_REQUIRE_CERT_SIGNING`、nested verification、精确 identity 匹配、标准 `Contents/Frameworks` 布局和 framework rpath。
+    - `swift test --filter BuildRunScriptTests/testUnsignedDebugPathRepairsAdHocSignatureAfterRpathChange` 先失败，证明脚本缺少无证书 debug ad-hoc 重签函数。
+    - `./script/build_and_run.sh --verify` 在 framework 迁移初版中失败；`codesign --verify --strict --verbose=4 dist/WalkFlow-Mac.app` 输出 `invalid signature (code or signature have been modified)`，`log show` 显示 `CODE SIGNING ... rejecting invalid page`，根因是 `install_name_tool` 修改 executable 后未重签。
+  - 2026-06-18 长期本地开发签名 GREEN / review 修复后验证：
+    - `swift test --filter BuildRunScriptTests`：9 个 XCTest，0 failures。
+    - `swift test --filter LottieStatusIconViewTests`：8 个 XCTest，0 failures。
+    - `swift test`：101 个 XCTest，0 failures。
+    - `swift build -c debug --product WalkFlowMac`：通过。
+    - `./script/build_and_run.sh --verify`：通过；输出 `Verified WalkFlowMac is running.`，并显示 `dist/WalkFlow-Mac.app/Contents/Frameworks/Lottie.framework` 和 app bundle 均 `valid on disk` / `satisfies its Designated Requirement`。
+    - `WALKFLOW_REQUIRE_CERT_SIGNING=1 ./script/build_and_run.sh --verify`：退出码 `2`，输出 `Certificate-backed signing is required, but WALKFLOW_CODESIGN_IDENTITY is not set.`。
+    - `WALKFLOW_CODESIGN_IDENTITY='Definitely Missing WalkFlow Identity' ./script/build_and_run.sh --verify`：退出码 `2`，输出 `Configured WALKFLOW_CODESIGN_IDENTITY was not found`。
+    - `/usr/bin/security find-identity -p codesigning -v`：输出 `0 valid identities found`。
+    - `test -d dist/WalkFlow-Mac.app/Contents/Frameworks/Lottie.framework && test ! -e dist/WalkFlow-Mac.app/Contents/MacOS/Lottie.framework && test -s dist/WalkFlow-Mac.app/Contents/Resources/Lottie/alertTriangle.json && test ! -e dist/WalkFlow-Mac.app/WalkFlowMac_WalkFlowMacApp.bundle`：通过，输出 `signed-layout-ok`。
+    - `/usr/bin/codesign --verify --strict --verbose=4 dist/WalkFlow-Mac.app`：通过。
+    - `/usr/bin/codesign -dr - dist/WalkFlow-Mac.app`：当前无证书 fallback 输出 `designated => cdhash H"a06af101fc21f97d96bec7c483217beb9f290cf6"`；这是本机缺少 certificate-backed identity 的预期限制，不代表长期 TCC 稳定签名已完成。
+    - `/usr/bin/codesign -dr - dist/WalkFlow-Mac.app/Contents/Frameworks/Lottie.framework`：当前无证书 fallback 输出纯 `cdhash` requirement；证书签名模式会拒绝该状态。
+    - `otool -l dist/WalkFlow-Mac.app/Contents/MacOS/WalkFlowMac`：确认存在 `@executable_path/../Frameworks` rpath。
+    - `bash -n script/build_and_run.sh`：通过。
+    - `plutil -lint script/WalkFlowMac.debug.entitlements`：通过。
+    - `git diff --check`：通过。
+    - `rg -n "SwiftUI|import SwiftUI" Sources Tests Package.swift script .codex`：无输出。
+    - `LC_ALL=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
@@ -427,6 +461,7 @@
 - 未运行 lint：仓库当前未定义独立 lint 命令或格式化工具。
 - 未执行 Phase 2 人工 UI smoke：Phase 2 仅涉及 core domain/settings 逻辑；完整主窗口/HUD/手势人工验收在后续阶段按 `plan.md` 执行。
 - Camera preview / Accessibility Recheck bugfix 的摄像头画面、摄像头指示灯和 Accessibility 授权 UI 已由用户现场确认。Phase 13.2 手势矩阵仍未执行，不能声明 Vision gate passed。
+- 未实际完成 certificate-backed signing 通过路径：本机 `security find-identity -p codesigning -v` 返回 `0 valid identities found`。当前已验证脚本能力、强制证书签名失败路径、ad-hoc debug fallback 和可签名 bundle 布局；必须等本机准备 `Apple Development` 等证书型 identity 后，才能验证 `WALKFLOW_REQUIRE_CERT_SIGNING=1 WALKFLOW_CODESIGN_IDENTITY='Apple Development: ...' ./script/build_and_run.sh --verify` 以及非 `cdhash` designated requirement。
 
 ## 关键决策
 

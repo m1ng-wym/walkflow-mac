@@ -4,6 +4,59 @@ import Lottie
 @testable import WalkFlowMacApp
 
 final class LottieStatusIconViewTests: XCTestCase {
+    func testResourceLocatorPrefersStandardMainBundleResourcePath() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WalkFlowLottieResourceLocatorTests")
+            .appendingPathComponent(UUID().uuidString)
+        let mainBundleURL = tempRoot.appendingPathComponent("Main.bundle")
+        let moduleBundleURL = tempRoot.appendingPathComponent("Module.bundle")
+        let mainLottieDirectory = mainBundleURL.appendingPathComponent("Lottie")
+        let moduleLottieDirectory = moduleBundleURL.appendingPathComponent("Lottie")
+
+        try FileManager.default.createDirectory(at: mainLottieDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: moduleLottieDirectory, withIntermediateDirectories: true)
+        let mainResource = mainLottieDirectory.appendingPathComponent("alertTriangle.json")
+        let moduleResource = moduleLottieDirectory.appendingPathComponent("alertTriangle.json")
+        try "{}".write(to: mainResource, atomically: true, encoding: .utf8)
+        try "{}".write(to: moduleResource, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let url = try XCTUnwrap(
+            LottieResourceLocator.resourceURL(
+                forResourceName: "alertTriangle",
+                mainBundle: try XCTUnwrap(Bundle(url: mainBundleURL)),
+                moduleBundle: try XCTUnwrap(Bundle(url: moduleBundleURL))
+            )
+        )
+
+        XCTAssertEqual(url.standardizedFileURL, mainResource.standardizedFileURL)
+    }
+
+    func testResourceLocatorFallsBackToSwiftPMModuleBundle() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WalkFlowLottieResourceLocatorTests")
+            .appendingPathComponent(UUID().uuidString)
+        let mainBundleURL = tempRoot.appendingPathComponent("Main.bundle")
+        let moduleBundleURL = tempRoot.appendingPathComponent("Module.bundle")
+        let moduleLottieDirectory = moduleBundleURL.appendingPathComponent("Lottie")
+
+        try FileManager.default.createDirectory(at: mainBundleURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: moduleLottieDirectory, withIntermediateDirectories: true)
+        let moduleResource = moduleLottieDirectory.appendingPathComponent("alertTriangle.json")
+        try "{}".write(to: moduleResource, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let url = try XCTUnwrap(
+            LottieResourceLocator.resourceURL(
+                forResourceName: "alertTriangle",
+                mainBundle: try XCTUnwrap(Bundle(url: mainBundleURL)),
+                moduleBundle: try XCTUnwrap(Bundle(url: moduleBundleURL))
+            )
+        )
+
+        XCTAssertEqual(url.standardizedFileURL, moduleResource.standardizedFileURL)
+    }
+
     func testResourceNamesMatchBundledUseAnimationsFiles() {
         XCTAssertNil(LottieStatusIconView.resourceName(for: .none))
         XCTAssertEqual(LottieStatusIconView.resourceName(for: .alertTriangle), "alertTriangle")

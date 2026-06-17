@@ -27,6 +27,82 @@ final class BuildRunScriptTests: XCTestCase {
         }
     }
 
+    func testBuildAndStageSignsAfterStagingWhenIdentityIsConfigured() throws {
+        let script = try buildRunScript()
+        let functionBody = try function(named: "build_and_stage_app", in: script)
+
+        let buildRange = try XCTUnwrap(functionBody.range(of: "build_app"))
+        let stageRange = try XCTUnwrap(functionBody.range(of: "stage_bundle"))
+        let signRange = try XCTUnwrap(functionBody.range(of: "sign_staged_app_if_configured"))
+        XCTAssertLessThan(buildRange.lowerBound, stageRange.lowerBound)
+        XCTAssertLessThan(stageRange.lowerBound, signRange.lowerBound)
+
+        XCTAssertTrue(script.contains("WALKFLOW_CODESIGN_IDENTITY"))
+        XCTAssertTrue(script.contains("WALKFLOW_CODESIGN_KEYCHAIN"))
+        XCTAssertTrue(script.contains("WalkFlowMac.debug.entitlements"))
+        XCTAssertTrue(script.contains("/usr/bin/security find-identity -p codesigning -v"))
+        XCTAssertTrue(script.contains("/usr/bin/codesign"))
+    }
+
+    func testCertificateSigningCanBeRequiredForVerification() throws {
+        let script = try buildRunScript()
+        let buildBody = try function(named: "build_and_stage_app", in: script)
+        let preflightBody = try function(named: "preflight_codesign_configuration", in: script)
+
+        XCTAssertTrue(script.contains("WALKFLOW_REQUIRE_CERT_SIGNING"))
+        XCTAssertTrue(buildBody.contains("preflight_codesign_configuration"))
+        XCTAssertTrue(preflightBody.contains("REQUIRE_CERT_SIGNING"))
+        XCTAssertTrue(preflightBody.contains("Certificate-backed signing is required"))
+    }
+
+    func testUnsignedDebugPathRepairsAdHocSignatureAfterRpathChange() throws {
+        let script = try buildRunScript()
+        let signBody = try function(named: "sign_staged_app_if_configured", in: script)
+        let adHocBody = try function(named: "sign_ad_hoc_debug_bundle", in: script)
+
+        XCTAssertTrue(signBody.contains("sign_ad_hoc_debug_bundle"))
+        XCTAssertTrue(adHocBody.contains("--sign -"))
+        XCTAssertTrue(adHocBody.contains("verify_debug_ad_hoc_app_bundle"))
+    }
+
+    func testConfiguredSigningVerifiesNestedCodeAndRejectsCdhashOnlyRequirements() throws {
+        let script = try buildRunScript()
+        let signBody = try function(named: "sign_staged_app_if_configured", in: script)
+        let verifyBody = try function(named: "verify_signed_app_bundle", in: script)
+
+        let validateRange = try XCTUnwrap(signBody.range(of: "validate_codesign_identity"))
+        let signNestedRange = try XCTUnwrap(signBody.range(of: "sign_nested_code"))
+        let signAppRange = try XCTUnwrap(signBody.range(of: "sign_app_bundle"))
+        let verifyRange = try XCTUnwrap(signBody.range(of: "verify_signed_app_bundle"))
+        XCTAssertLessThan(validateRange.lowerBound, signNestedRange.lowerBound)
+        XCTAssertLessThan(signNestedRange.lowerBound, signAppRange.lowerBound)
+        XCTAssertLessThan(signAppRange.lowerBound, verifyRange.lowerBound)
+
+        XCTAssertTrue(verifyBody.contains("verify_nested_code"))
+        XCTAssertTrue(verifyBody.contains("designated => cdhash"))
+    }
+
+    func testIdentityValidationAvoidsSubstringMatching() throws {
+        let script = try buildRunScript()
+        let validationBody = try function(named: "validate_codesign_identity", in: script)
+
+        XCTAssertFalse(validationBody.contains("grep -F -- \"$CODESIGN_IDENTITY\""))
+        XCTAssertTrue(script.contains("matches_codesign_identity"))
+    }
+
+    func testStageBundleUsesStandardSignedResourceLocation() throws {
+        let script = try buildRunScript()
+        let stageBody = try function(named: "stage_bundle", in: script)
+
+        XCTAssertTrue(script.contains("FRAMEWORKS_DIR=\"$BUNDLE_PATH/Contents/Frameworks\""))
+        XCTAssertTrue(stageBody.contains("$FRAMEWORKS_DIR"))
+        XCTAssertTrue(stageBody.contains("Contents/Resources/Lottie"))
+        XCTAssertFalse(stageBody.contains("\"$BUNDLE_PATH/Contents/MacOS/\""))
+        XCTAssertFalse(stageBody.contains("\"$BUNDLE_PATH/\""))
+        XCTAssertTrue(script.contains("@executable_path/../Frameworks"))
+        XCTAssertTrue(script.contains("$BUNDLE_PATH/Contents/Resources/Lottie/alertTriangle.json"))
+    }
+
     func testDebugModeStopsRunningAppBeforeBuilding() throws {
         let script = try buildRunScript()
 
@@ -48,5 +124,12 @@ final class BuildRunScriptTests: XCTestCase {
         let afterBranch = script[branchStart.upperBound...]
         let nextBranch = try XCTUnwrap(afterBranch.range(of: ";;"))
         return afterBranch[..<nextBranch.lowerBound]
+    }
+
+    private func function(named name: String, in script: String) throws -> Substring {
+        let functionStart = try XCTUnwrap(script.range(of: "\(name)() {"))
+        let afterFunction = script[functionStart.upperBound...]
+        let functionEnd = try XCTUnwrap(afterFunction.range(of: "\n}"))
+        return afterFunction[..<functionEnd.lowerBound]
     }
 }
