@@ -397,6 +397,7 @@
   - Camera preview / Accessibility Recheck review 修复：已补 `testLaunchPreparationStartsPreviewWhenCameraGrantedButAccessibilityMissing`、增强 `testPermissionPanelRecheckPromptsForAccessibilityWhenDenied`、补 `testPromptForAccessibilityDelegatesToAccessibilityProvider`，并重新跑通 focused tests、相关测试组和全量验证。
   - Camera preview / Accessibility Recheck code-quality re-review：未发现 Critical / Important / Minor；确认上一轮 Important 和两个 Minor 均已关闭。reviewer 同时确认 `testAccessibilityBlockedObservationDoesNotExecuteOrPrimeGestureStateWhilePreviewRuns` 覆盖 Accessibility denied 期间 preview 可启动但手势不会执行或预热状态机，权限边界没有被放开。残余风险仅为现场验证：Codex 未直接观察真实摄像头画面、摄像头指示灯或 macOS Accessibility 授权 UI。
   - Camera preview / Accessibility Recheck final pre-commit verification：code-quality re-review 通过后再次执行 full `swift test`，90 个 XCTest 全部通过；`swift build` 通过；`./script/build_and_run.sh --verify` 通过，输出 `Verified WalkFlowMac is running.`；`git diff --check` 通过；冻结 `plan.md` hash 仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`；SwiftUI 搜索无命中；local-only artifact 未被 Git 跟踪。
+  - Phase 13.2 manual preflight confirmation：用户已确认当前 App 已出现摄像头画面、摄像头指示灯已亮起；用户点击 `Recheck` 后系统提示确认“辅助功能”权限，用户已授予该权限。该确认解除 Camera preview / Accessibility 现场阻塞，但不等同于 Vision gesture matrix 通过。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
@@ -416,7 +417,7 @@
 - Phase 1 已定义 SwiftPM package 和本地 run script，并已执行 `swift test`、`swift build`、`./script/build_and_run.sh --verify`、`plutil`、`codesign` 和 SwiftUI 禁用检查。
 - 未运行 lint：仓库当前未定义独立 lint 命令或格式化工具。
 - 未执行 Phase 2 人工 UI smoke：Phase 2 仅涉及 core domain/settings 逻辑；完整主窗口/HUD/手势人工验收在后续阶段按 `plan.md` 执行。
-- Camera preview / Accessibility Recheck bugfix 未由 Codex 直接观察摄像头画面或摄像头指示灯；该部分需要用户在真实设备前确认，确认后再继续 Phase 13.2 手势矩阵。
+- Camera preview / Accessibility Recheck bugfix 的摄像头画面、摄像头指示灯和 Accessibility 授权 UI 已由用户现场确认。Phase 13.2 手势矩阵仍未执行，不能声明 Vision gate passed。
 
 ## 关键决策
 

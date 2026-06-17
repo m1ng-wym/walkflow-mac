@@ -378,10 +378,17 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 代码质量 re-review 已通过：确认上一轮 1 个 Important 和 2 个 Minor 均已关闭，未发现新的 Critical / Important / Minor；残余风险仅为 Codex 未直接观察真实摄像头画面、摄像头指示灯或 macOS Accessibility 授权 UI。
 - 该修复解除“无法看到预览而无法进入手势验证”的实现阻塞，但真实摄像头画面是否出现、摄像头指示灯是否点亮，仍需用户在当前运行的 App 上现场确认。
 
+### 2026-06-17 Phase 13.2 Manual Gate 权限与摄像头现场确认
+
+- 用户已现场确认：当前 App 主窗口已出现摄像头画面。
+- 用户已现场确认：Mac 摄像头指示灯已亮起。
+- 用户已点击 `Recheck` 并按系统提示授予 `Accessibility` / “辅助功能”权限。
+- Camera / Accessibility 的现场启动阻塞已解除；下一步进入真实手势 smoke 和 Phase 13.2 manual Vision gate 矩阵。
+
 ## 下一步
 
-继续 Phase 13.2 manual Vision gate。Camera 权限弹窗已经触发并允许，且当前修复已让 Camera 预览不再被 Accessibility 权限挡住。下一步应由用户在当前运行的 App 中确认摄像头画面/指示灯，然后继续完成真实手势矩阵；Codex 不能在无人配合下伪造该 gate，在该 gate 完成并记录前，不继续进入 Phase 14。
+继续 Phase 13.2 manual Vision gate。Camera 权限弹窗已经触发并允许，Camera 预览已经出现，摄像头指示灯已亮起，Accessibility 权限也已授予。下一步应在当前运行的 App 中先做近距离 smoke：`Open Palm` 进入 ready、`Index Up` / `Index Down` 滚动、`Fist` 停止、`OK Pinch` 触发右侧 `Command`，再扩大到 1 m / 1.5 m / 2 m 的真实手势矩阵；Codex 不能在无人配合下伪造该 gate，在该 gate 完成并记录前，不继续进入 Phase 14。
 
 ## 阻塞
 
-Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前确认摄像头预览/指示灯，并执行真实摄像头/真实手势矩阵后，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。Camera 权限弹窗未出现的问题已通过启动授权请求修复解除；Camera 预览被 Accessibility 权限挡住的问题已通过本次修复解除，但仍等待用户现场确认。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。
+Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵后，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。Camera 权限弹窗未出现、Camera 预览被 Accessibility 权限挡住、摄像头画面/指示灯和 Accessibility 授权确认等前置阻塞均已解除。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。
