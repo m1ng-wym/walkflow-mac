@@ -383,12 +383,43 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 用户已现场确认：当前 App 主窗口已出现摄像头画面。
 - 用户已现场确认：Mac 摄像头指示灯已亮起。
 - 用户已点击 `Recheck` 并按系统提示授予 `Accessibility` / “辅助功能”权限。
-- Camera / Accessibility 的现场启动阻塞已解除；下一步进入真实手势 smoke 和 Phase 13.2 manual Vision gate 矩阵。
+- Camera 现场启动阻塞已解除；`Accessibility` UI 授权确认已完成，但随后确认当前 ad-hoc app 未被 TCC 信任，仍需处理 code requirement mismatch 后才能进入真实手势 smoke。
+
+### 2026-06-17 Accessibility TCC Code Requirement Mismatch 进度
+
+- 用户反馈：HUD 浮窗仍显示红点和 `Permission` alert，五指张开准备姿态毫无反应。
+- 已按 systematic debugging 重新定位根因：
+  - 摄像头画面和指示灯已工作，当前不是 Camera pipeline 阻塞。
+  - `tccd` 日志明确显示 `Failed to match existing code requirement for subject com.m1ngwym.walkflowmac and service kTCCServiceAccessibility`，并列出两个不同 `cdhash`。
+  - 当前 `dist/WalkFlow-Mac.app` 为 ad-hoc 签名，`codesign -dr - dist/WalkFlow-Mac.app` 只输出 `designated => cdhash H"..."`；`security find-identity -p codesigning -v` 返回 `0 valid identities found`。
+  - 结论：系统设置里存在 Accessibility 授权记录，但该记录绑定的是旧的 ad-hoc `cdhash`；重新 build/stage 后当前 App 的 `cdhash` 变化，`AXIsProcessTrusted()` 仍会返回 false，HUD 因权限 reducer 保持红点阻塞，手势事件按设计被挡住。
+- 已确认不应继续通过修改手势阈值解决该问题；必须先修复本地运行/授权流程。
+- 已按 TDD 为 run script 增加 no-build 启动保护：
+  - RED：新增 `BuildRunScriptTests.testLaunchExistingModeDoesNotRebuildOrRestageBeforeModeDispatch`，先失败，证明脚本缺少 `--launch-existing`，且进入参数分支前无条件 `build_app` / `stage_bundle`。
+  - GREEN：`script/build_and_run.sh` 新增 `--launch-existing|launch-existing`，仅关闭并打开现有 `dist/WalkFlow-Mac.app`，不会 rebuild 或 restage；`run`、`--verify`、`--logs`、`--telemetry` 分支仍负责 build/stage。
+- Code review 发现 1 个 Important：原 no-build 回归测试只检查全局前置 build/stage 和模式存在，未直接检查 `--launch-existing` 分支本身未来不能调用 build/stage，也未正向检查 rebuild 模式仍 build/stage。
+- 已按 review 加强测试：
+  - `testLaunchExistingModeDoesNotRebuildOrRestageBeforeModeDispatch` 现在直接解析 `--launch-existing` 分支，断言该分支不包含 `build_and_stage_app` / `build_app` / `stage_bundle`，并包含 `launch_existing_app`。
+  - 新增 `testRebuildModesStillBuildAndStageBeforeLaunch`，断言 `run`、`--verify`、`--logs`、`--telemetry` 仍调用 `build_and_stage_app`。
+  - 新增 `testDebugModeStopsRunningAppBeforeBuilding`，保持 `debug` 分支先停旧进程再 build/stage 的旧行为。
+- Code review 发现 1 个 Minor：历史文档段落仍写 Accessibility 现场阻塞已解除，容易与后续 TCC mismatch 结论冲突；已改为“Accessibility UI 授权确认已完成，但随后确认当前 ad-hoc app 未被 TCC 信任”。
+- 已执行最终验证：
+  - `swift test --filter BuildRunScriptTests`：3 个 XCTest，0 failures。
+  - `swift test`：93 个 XCTest，0 failures。
+  - `swift build`：通过。
+  - `bash -n script/build_and_run.sh`：通过。
+  - `git diff --check`：通过。
+  - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`。
+  - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：`418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，冻结计划未修改。
+  - SwiftUI 禁用检查无命中。
+  - 最终 staged app 的 current designated requirement：`cdhash H"f98a3fb31a3837ef001bf2438b98173140eaf071"`。
+- 临时本地证书实验曾触发系统“证书信任设置”授权弹窗；已明确要求用户点“取消”，并中断命令。后续不在未获明确批准时修改系统证书信任或用户 keychain。
+- 当前操作策略：完成本轮最终 build/stage 验证后，用户需要在系统设置中移除旧的 WalkFlow-Mac Accessibility 条目，并按当前 `dist/WalkFlow-Mac.app` 重新添加/启用一次；之后用 `./script/build_and_run.sh --launch-existing` 启动，不再 rebuild，继续 Phase 13.2 手势 smoke。
 
 ## 下一步
 
-继续 Phase 13.2 manual Vision gate。Camera 权限弹窗已经触发并允许，Camera 预览已经出现，摄像头指示灯已亮起，Accessibility 权限也已授予。下一步应在当前运行的 App 中先做近距离 smoke：`Open Palm` 进入 ready、`Index Up` / `Index Down` 滚动、`Fist` 停止、`OK Pinch` 触发右侧 `Command`，再扩大到 1 m / 1.5 m / 2 m 的真实手势矩阵；Codex 不能在无人配合下伪造该 gate，在该 gate 完成并记录前，不继续进入 Phase 14。
+先完成 Accessibility TCC code requirement mismatch 的本地验证和文档收口。完成最终 `swift test`、`swift build`、`./script/build_and_run.sh --verify` 后，不要再 rebuild；由用户移除并重新添加当前 `dist/WalkFlow-Mac.app` 到 Accessibility，再用 `./script/build_and_run.sh --launch-existing` 启动现有包。若 HUD 从红点 `Permission` 进入绿点 standby，再继续 Phase 13.2 manual Vision gate：近距离 smoke `Open Palm` 进入 ready、`Index Up` / `Index Down` 滚动、`Fist` 停止、`OK Pinch` 触发右侧 `Command`，随后扩大到 1 m / 1.5 m / 2 m 的真实手势矩阵。
 
 ## 阻塞
 
-Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵后，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。Camera 权限弹窗未出现、Camera 预览被 Accessibility 权限挡住、摄像头画面/指示灯和 Accessibility 授权确认等前置阻塞均已解除。上一阻塞已由用户确认后解除：`Package.swift` 采用代码侧最小修复，冻结的 `plan.md` 不修改。
+Phase 13.2 当前仍存在真实外部阻塞：Accessibility UI 中“已开启”不等于当前 ad-hoc build 已被 TCC 信任。必须先按当前 staged app 重新建立 Accessibility 授权，并避免授权后再次 rebuild。该阻塞解除后，仍必须由用户在设备前执行真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。

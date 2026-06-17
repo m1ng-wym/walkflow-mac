@@ -49,38 +49,61 @@ launch_app() {
   /usr/bin/open -n "$BUNDLE_PATH"
 }
 
+launch_existing_app() {
+  if [[ ! -x "$EXECUTABLE_PATH" ]]; then
+    echo "Existing app bundle is missing or not executable: $EXECUTABLE_PATH" >&2
+    exit 2
+  fi
+  launch_app
+}
+
 verify_app() {
   sleep 2
   /usr/bin/pgrep -x "$APP_NAME" >/dev/null
   test -s "$BUNDLE_PATH/$RESOURCE_BUNDLE_NAME/Lottie/alertTriangle.json"
 }
 
-stop_app
-build_app
-stage_bundle
+build_and_stage_app() {
+  build_app
+  stage_bundle
+}
 
 case "$MODE" in
   run)
+    stop_app
+    build_and_stage_app
     launch_app
     ;;
   --verify|verify)
+    stop_app
+    build_and_stage_app
     launch_app
     verify_app
     echo "Verified $APP_NAME is running."
     ;;
   --logs|logs)
+    stop_app
+    build_and_stage_app
     launch_app
     /usr/bin/log stream --info --style compact --predicate 'process == "WalkFlowMac"'
     ;;
   --telemetry|telemetry)
+    stop_app
+    build_and_stage_app
     launch_app
     /usr/bin/log stream --info --style compact --predicate 'subsystem == "com.m1ngwym.walkflowmac"'
     ;;
+  --launch-existing|launch-existing)
+    stop_app
+    launch_existing_app
+    ;;
   --debug|debug)
+    stop_app
+    build_and_stage_app
     lldb -- "$EXECUTABLE_PATH"
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify|--launch-existing]" >&2
     exit 2
     ;;
 esac
