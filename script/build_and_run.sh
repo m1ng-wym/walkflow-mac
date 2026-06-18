@@ -9,6 +9,11 @@ RESOURCE_BUNDLE_NAME="WalkFlowMac_WalkFlowMacApp.bundle"
 CONFIGURATION="debug"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOCAL_SIGNING_ENV="$ROOT_DIR/.walkflow-local-signing.env"
+if [[ -f "$LOCAL_SIGNING_ENV" ]]; then
+  source "$LOCAL_SIGNING_ENV"
+fi
+
 DIST_DIR="$ROOT_DIR/dist"
 BUNDLE_PATH="$DIST_DIR/$BUNDLE_NAME"
 EXECUTABLE_PATH="$BUNDLE_PATH/Contents/MacOS/$APP_NAME"
@@ -130,7 +135,8 @@ validate_codesign_identity() {
 
   if ! matches_codesign_identity "$identity_output"; then
     echo "Configured WALKFLOW_CODESIGN_IDENTITY was not found: $CODESIGN_IDENTITY" >&2
-    echo "Create or import an Apple Development signing identity first, or unset WALKFLOW_CODESIGN_IDENTITY for unsigned debug staging." >&2
+    echo "Run ./script/setup_local_signing.sh to create a free local signing identity." >&2
+    echo "To use ad-hoc debug fallback instead, remove .walkflow-local-signing.env or unset WALKFLOW_CODESIGN_IDENTITY." >&2
     exit 2
   fi
 }

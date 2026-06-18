@@ -441,6 +441,50 @@
     - `git diff --check`：通过。
     - `rg -n "SwiftUI|import SwiftUI" Sources Tests Package.swift script .codex`：无输出。
     - `LC_ALL=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`。
+  - 2026-06-18 免费本地自签名 onboarding TDD RED：
+    - `swift test --filter BuildRunScriptTests/testBuildScriptLoadsLocalSigningEnvBeforeReadingCodesignVariables` 先失败，证明 `script/build_and_run.sh` 尚未在读取 signing variables 前加载 `.walkflow-local-signing.env`。
+    - `swift test --filter LocalSigningSetupScriptTests` 初始失败，失败原因为 `script/setup_local_signing.sh` 不存在，以及 `.gitignore` 未忽略 `.walkflow-local-signing.env`。
+    - 加强脚本断言后，focused test 继续失败，证明初版测试尚未覆盖 `identity_exists` / “exists but is not a valid code signing identity” 这类已存在但未被 trust 的证书路径。
+  - 2026-06-18 免费本地自签名 onboarding GREEN：
+    - `script/build_and_run.sh` 现在会在设置 `CODESIGN_IDENTITY` 和 `REQUIRE_CERT_SIGNING` 前加载 `.walkflow-local-signing.env`。
+    - `.gitignore` 现在忽略 `.walkflow-local-signing.env`，防止本地 identity / keychain 配置进入 Git。
+    - 新增 `script/setup_local_signing.sh`，将创建自签 Code Signing identity、导入 keychain、请求 trust for code signing、写入 `.walkflow-local-signing.env` 和 `--check` 验证集中为一个本地 onboarding 命令。
+    - 新增 `docs/LOCAL_SIGNING.md`，面向开源 clone 用户说明免费本地签名流程、验证命令、Keychain Access fallback 和不要共享私钥的边界。
+  - 2026-06-18 免费本地自签名 onboarding 当前验证：
+    - `swift test --filter BuildRunScriptTests/testBuildScriptLoadsLocalSigningEnvBeforeReadingCodesignVariables`：通过，1 个 XCTest，0 failures。
+    - `swift test --filter LocalSigningSetupScriptTests`：通过，2 个 XCTest，0 failures。
+    - `swift test --filter BuildRunScriptTests`：通过，10 个 XCTest，0 failures。
+    - `bash -n script/setup_local_signing.sh && bash -n script/build_and_run.sh`：通过。
+    - `./script/setup_local_signing.sh --help`：通过，输出 usage 和环境变量覆盖项。
+    - `./script/setup_local_signing.sh --check`：当前无本地证书，按预期退出 `1`，输出 `No valid local signing identity found: WalkFlow Local Development`。
+    - `git check-ignore -v .walkflow-local-signing.env`：命中 `.gitignore`。
+    - 本轮未执行 `./script/setup_local_signing.sh` 默认路径，因为它会创建本地证书、导入 keychain 并请求修改 trust settings；这需要用户显式运行和确认系统提示。
+  - 2026-06-18 免费本地自签名 onboarding code review 初审：
+    - 未发现 Critical。
+    - Important 1：文档没有明确该自签证书仅用于本机开发，不用于 distribution、release signing 或 notarization。已补 `docs/LOCAL_SIGNING.md` 和 `script/setup_local_signing.sh` 成功输出，并新增测试覆盖。
+    - Important 2：新建 identity 路径中 `write_local_env` 早于 `verify_identity`，trust 未完成时可能留下 `WALKFLOW_REQUIRE_CERT_SIGNING=1`。已改为 `create_identity -> verify_identity -> write_local_env -> print_next_steps`，并新增测试覆盖顺序。
+    - Important 3：configured identity 缺失时，`build_and_run.sh` 仍提示 Apple Development。已改为提示运行 `./script/setup_local_signing.sh`，或移除 `.walkflow-local-signing.env` / unset identity 回到 ad-hoc fallback，并新增测试覆盖。
+    - Important 4：根目录没有 README，开源用户不容易发现 local signing onboarding。已新增 `README.md` quick start，并新增测试覆盖。
+    - Minor 1：本地签名测试偏字符串检查，缺少无副作用 smoke。已新增 `bash -n` 和 `--help` XCTest。
+    - Minor 2：临时 signing material 未显式限制权限。已在 `create_identity()` 前设置 `umask 077` 并对临时目录 `chmod 700`，新增测试覆盖。
+  - 2026-06-18 免费本地自签名 onboarding review 修复后 focused 验证：
+    - `swift test --filter LocalSigningSetupScriptTests`：8 个 XCTest，0 failures。
+    - `swift test --filter BuildRunScriptTests/testMissingIdentityMessagePointsToLocalSigningSetup`：1 个 XCTest，0 failures。
+  - 2026-06-18 免费本地自签名 onboarding re-review：
+    - reviewer 确认 6 个上一轮问题均已关闭：local-only / not distribution / not notarization 边界、env 写入顺序、missing identity 错误提示、README quick start、无副作用 smoke、restrictive umask。
+    - 未发现新的 Critical、Important 或 Minor。
+    - reviewer 同样未运行 `./script/setup_local_signing.sh` 默认路径，因为该路径会创建证书、导入 keychain 并修改 trust，需要用户显式执行。
+  - 2026-06-18 免费本地自签名 onboarding 最终验证：
+    - `swift test`：111 个 XCTest，0 failures。
+    - `swift build -c debug --product WalkFlowMac`：通过。
+    - `bash -n script/setup_local_signing.sh && bash -n script/build_and_run.sh`：通过。
+    - `./script/setup_local_signing.sh --help`：通过，输出 local development only / not distribution / notarization 边界。
+    - `./script/setup_local_signing.sh --check`：当前无本地 identity，按预期退出 `1`，输出 `No valid local signing identity found: WalkFlow Local Development`。
+    - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`；当前无 `.walkflow-local-signing.env`，所以仍走 ad-hoc fallback。
+    - `git diff --check`：通过。
+    - `rg -n "SwiftUI|import SwiftUI" Sources Tests Package.swift script .codex`：无输出。
+    - `LC_ALL=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`。
+    - `.walkflow-local-signing.env` 当前不存在，确认本轮没有执行会创建 env / keychain identity / trust 修改的 setup 正路径。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
@@ -461,7 +505,7 @@
 - 未运行 lint：仓库当前未定义独立 lint 命令或格式化工具。
 - 未执行 Phase 2 人工 UI smoke：Phase 2 仅涉及 core domain/settings 逻辑；完整主窗口/HUD/手势人工验收在后续阶段按 `plan.md` 执行。
 - Camera preview / Accessibility Recheck bugfix 的摄像头画面、摄像头指示灯和 Accessibility 授权 UI 已由用户现场确认。Phase 13.2 手势矩阵仍未执行，不能声明 Vision gate passed。
-- 未实际完成 certificate-backed signing 通过路径：本机 `security find-identity -p codesigning -v` 返回 `0 valid identities found`。当前已验证脚本能力、强制证书签名失败路径、ad-hoc debug fallback 和可签名 bundle 布局；必须等本机准备 `Apple Development` 等证书型 identity 后，才能验证 `WALKFLOW_REQUIRE_CERT_SIGNING=1 WALKFLOW_CODESIGN_IDENTITY='Apple Development: ...' ./script/build_and_run.sh --verify` 以及非 `cdhash` designated requirement。
+- 未实际执行本地自签证书创建和 trust 修改：默认 `./script/setup_local_signing.sh` 会创建私钥/证书、导入 keychain 并请求 macOS 修改 Code Signing trust，本轮为避免擅自修改用户 keychain/trust settings 只验证了 `--help`、`--check`、脚本语法、测试和 build 集成。实际非纯 `cdhash` designated requirement 需要用户显式运行 setup 并确认系统提示后再验证。
 
 ## 关键决策
 
@@ -504,6 +548,7 @@
 - 已确认第一版技术主线：`AVFoundation + Apple Vision hand pose + 自研轻量 GestureClassifier + GestureStateMachine + CGEvent/Accessibility + AppKit`。
 - 已确认 Apple Vision 的验证门槛：在 1 到 2 米距离下，五指张开、一指向上、一指向下、握拳、OK 捏合五个关键手势识别稳定率达标，则不引入 MediaPipe。
 - 已确认 MediaPipe 进入门槛：如果 Vision 对 OK 捏合或一指方向等关键手势不稳定，再做 MediaPipe 原生 spike；只有 MediaPipe 显著提升识别稳定性且 CPU/内存可接受，才纳入运行时。
+- 已确认长期本地 TCC 稳定签名不强制依赖付费 Apple Developer Program：默认开源开发路径是每个开发者在自己的 Mac 上运行 `./script/setup_local_signing.sh` 创建免费本地自签 Code Signing identity；`Apple Development` 证书只是可选方案。仓库不得提交共享证书、私钥、`.p12` 或 `.walkflow-local-signing.env`。
 - 在设计规格获得用户批准前，不进入代码实现。
 - 早期因项目级 `AGENTS.md` 曾要求 commit 前必须先问用户，未自动 commit 设计规格；当前规则已更新为本地 commit 可直接执行。
 - 用户要求 implementation plan 写入当前任务 `plan.md`，因此未创建 `docs/superpowers/plans/` 下的新计划文件。

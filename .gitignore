@@ -4,6 +4,7 @@ dist/
 .codex-artifacts/
 .worktrees/
 worktrees/
+.walkflow-local-signing.env
 
 # Local agent instructions and Superpowers working artifacts stay local.
 AGENTS.md

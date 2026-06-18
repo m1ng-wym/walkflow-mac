@@ -44,6 +44,19 @@ final class BuildRunScriptTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/codesign"))
     }
 
+    func testBuildScriptLoadsLocalSigningEnvBeforeReadingCodesignVariables() throws {
+        let script = try buildRunScript()
+
+        let envRange = try XCTUnwrap(script.range(of: ".walkflow-local-signing.env"))
+        let sourceRange = try XCTUnwrap(script.range(of: "source \"$LOCAL_SIGNING_ENV\""))
+        let identityRange = try XCTUnwrap(script.range(of: "CODESIGN_IDENTITY=\"${WALKFLOW_CODESIGN_IDENTITY:-}\""))
+        let requireRange = try XCTUnwrap(script.range(of: "REQUIRE_CERT_SIGNING=\"${WALKFLOW_REQUIRE_CERT_SIGNING:-0}\""))
+
+        XCTAssertLessThan(envRange.lowerBound, identityRange.lowerBound)
+        XCTAssertLessThan(sourceRange.lowerBound, identityRange.lowerBound)
+        XCTAssertLessThan(sourceRange.lowerBound, requireRange.lowerBound)
+    }
+
     func testCertificateSigningCanBeRequiredForVerification() throws {
         let script = try buildRunScript()
         let buildBody = try function(named: "build_and_stage_app", in: script)
@@ -88,6 +101,15 @@ final class BuildRunScriptTests: XCTestCase {
 
         XCTAssertFalse(validationBody.contains("grep -F -- \"$CODESIGN_IDENTITY\""))
         XCTAssertTrue(script.contains("matches_codesign_identity"))
+    }
+
+    func testMissingIdentityMessagePointsToLocalSigningSetup() throws {
+        let script = try buildRunScript()
+        let validationBody = try function(named: "validate_codesign_identity", in: script)
+
+        XCTAssertTrue(validationBody.contains("./script/setup_local_signing.sh"))
+        XCTAssertTrue(validationBody.contains(".walkflow-local-signing.env"))
+        XCTAssertFalse(validationBody.contains("Apple Development signing identity first"))
     }
 
     func testStageBundleUsesStandardSignedResourceLocation() throws {

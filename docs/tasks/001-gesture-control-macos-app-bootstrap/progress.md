@@ -463,12 +463,53 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
   - `rg -n "SwiftUI|import SwiftUI" Sources Tests Package.swift script .codex`：无输出。
   - 冻结 `plan.md` hash 仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`。
 
+### 2026-06-18 免费本地自签名 onboarding 进度
+
+- 用户确认不希望为 Apple Developer Program 付费，接受免费自签名本地证书方案。
+- 用户进一步要求降低开源用户 clone 后的配置成本，不希望每个使用者都手动理解和创建证书。
+- 已确认安全边界：不能把共享证书、私钥、`.p12`、`.walkflow-local-signing.env` 或任何本机 trust 状态提交到仓库；每个开发者必须在自己的 Mac 上生成自己的本地私钥和证书。
+- 已按 TDD 补充本地签名 onboarding 测试：
+  - `BuildRunScriptTests.testBuildScriptLoadsLocalSigningEnvBeforeReadingCodesignVariables` 先失败，证明 `build_and_run.sh` 尚未自动加载 `.walkflow-local-signing.env`；随后实现自动加载并跑通。
+  - `LocalSigningSetupScriptTests.testSetupScriptCreatesAndPersistsLocalCodeSigningIdentityConfiguration` 先因 `script/setup_local_signing.sh` 不存在失败；随后新增脚本并覆盖自签 Code Signing identity、`extendedKeyUsage = codeSigning`、PKCS#12 导入、trust for code signing、identity 校验和本地 env 写入。
+  - `LocalSigningSetupScriptTests.testLocalSigningEnvIsIgnoredByGit` 先失败，证明 `.walkflow-local-signing.env` 未被忽略；随后将其加入 `.gitignore` 并跑通。
+- 已新增 `script/setup_local_signing.sh`：
+  - 默认生成 `WalkFlow Local Development` 自签 Code Signing identity。
+  - 使用 OpenSSL 生成带 `extendedKeyUsage = codeSigning` 的证书和私钥，并导出临时 PKCS#12。
+  - 使用 `/usr/bin/security import` 导入当前用户默认 keychain。
+  - 使用 `/usr/bin/security add-trusted-cert -r trustRoot -p codeSign` 请求 macOS 将证书信任为 code signing 证书。
+  - 写入本地 `.walkflow-local-signing.env`，设置 `WALKFLOW_CODESIGN_IDENTITY`、`WALKFLOW_CODESIGN_KEYCHAIN` 和 `WALKFLOW_REQUIRE_CERT_SIGNING=1`。
+  - 支持 `--check`，用于证书已存在或用户手动在 Keychain Access 完成 trust 后重新写入 env 并验证。
+  - 支持 `WALKFLOW_LOCAL_SIGNING_IDENTITY`、`WALKFLOW_LOCAL_SIGNING_DAYS`、`WALKFLOW_LOCAL_SIGNING_KEYCHAIN` 自定义。
+- 已更新 `script/build_and_run.sh`：在读取 `WALKFLOW_CODESIGN_IDENTITY` / `WALKFLOW_REQUIRE_CERT_SIGNING` 前自动 `source "$ROOT_DIR/.walkflow-local-signing.env"`，因此开源用户完成一次 setup 后，后续仍使用原命令 `./script/build_and_run.sh --verify`。
+- 已新增 `docs/LOCAL_SIGNING.md`，把开源用户流程收敛为：
+  - `./script/setup_local_signing.sh`
+  - `./script/build_and_run.sh --verify`
+  - `/usr/bin/codesign -dr - dist/WalkFlow-Mac.app` 验证不再是纯 `cdhash` requirement。
+- 已明确文档 fallback：如果 macOS trust 修改需要密码或 Touch ID，或脚本提示证书还不是 valid code signing identity，用户需要在 Keychain Access 中信任 `WalkFlow Local Development` 的 Code Signing，再运行 `./script/setup_local_signing.sh --check`。
+- 已执行脚本安全边界验证：本轮未实际运行会创建证书、导入 keychain 或修改系统 trust 的默认 setup 路径；仅运行 `--help` 和 `--check`。`--check` 在当前无证书状态下按预期退出 `1`，输出 `No valid local signing identity found: WalkFlow Local Development`。
+- 当前长期签名口径更新：免费自签名本地证书是默认开源开发路径；`Apple Development` 证书仍可作为可选更标准路径，但不再是本项目本地稳定 TCC 身份的唯一方案。
+- 免费本地自签名 onboarding 初审发现 4 个 Important 和 2 个 Minor：
+  - Important：`docs/LOCAL_SIGNING.md` 没有明确 local development only / not distribution / not notarization。
+  - Important：`script/setup_local_signing.sh` 在新建 identity 路径中先写 `.walkflow-local-signing.env` 再验证 identity，可能在 trust 未完成时留下强制签名 env。
+  - Important：`script/build_and_run.sh` 找不到 identity 时仍提示创建 Apple Development identity，没有指向新的免费 setup。
+  - Important：仓库根目录没有 README，开源 clone 用户不容易发现本地签名 onboarding。
+  - Minor：`LocalSigningSetupScriptTests` 偏静态字符串检查，缺少无副作用脚本 smoke。
+  - Minor：临时 signing material 生成前未显式设置限制性 `umask`。
+- 已按 TDD 修复上述 review findings：
+  - 新增 `testSetupScriptWritesLocalEnvOnlyAfterNewIdentityIsValid`，先 RED，再将 `write_local_env` 挪到 `verify_identity` 之后。
+  - 新增 `testSetupScriptSuccessOutputStatesLocalDevelopmentOnly` 和 `testLocalSigningDocumentationStatesDevelopmentOnlyBoundary`，先 RED，再补 `local development only`、`not for distribution`、`notarization` 边界说明。
+  - 新增 `testMissingIdentityMessagePointsToLocalSigningSetup`，先 RED，再将 missing identity 错误提示改为运行 `./script/setup_local_signing.sh` 或移除 `.walkflow-local-signing.env` 回到 ad-hoc fallback。
+  - 新增 `testRepositoryReadmeLinksLocalSigningQuickStart`，先 RED，再新增根目录 `README.md`，提供 clone 后可见的 quick start。
+  - 新增 `testSetupScriptHelpAndSyntaxAreExecutableWithoutKeychainMutation`，覆盖 `bash -n` 和 `./script/setup_local_signing.sh --help`。
+  - 新增 `testSetupScriptUsesRestrictiveUmaskForGeneratedSigningMaterial`，并在生成私钥/证书/PKCS#12 前设置 `umask 077` 和临时目录 `chmod 700`。
+- 免费本地自签名 onboarding re-review 已通过：reviewer 确认上一轮 4 个 Important 和 2 个 Minor 均已关闭，未发现新的 Critical / Important / Minor。
+
 ## 下一步
 
-先完成长期本地开发签名收尾 review 和本地 commit。随后需要用户在本机准备一个可用的证书型 codesigning identity，优先 `Apple Development: ...`；准备完成后用 `WALKFLOW_CODESIGN_IDENTITY='Apple Development: ...' ./script/build_and_run.sh --verify` 生成证书签名 app，并重新添加/启用 Accessibility 一次。只有 `codesign -dr - dist/WalkFlow-Mac.app` 不再是纯 `cdhash` 后，才能恢复“rebuild 后不反复掉 Accessibility 授权”的长期验证。完成后继续 Phase 13.2 manual Vision gate。
+先完成免费本地自签名 onboarding 的 code review、最终验证和本地 commit。随后用户可以显式运行 `./script/setup_local_signing.sh`，按 macOS 提示允许证书 trust 变更，再运行 `./script/build_and_run.sh --verify`。只有 `codesign -dr - dist/WalkFlow-Mac.app` 不再是纯 `cdhash` 后，才能恢复“rebuild 后不反复掉 Accessibility 授权”的长期验证。完成稳定签名后，继续 Phase 13.2 manual Vision gate。
 
 ## 阻塞
 
 Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
 
-长期签名当前存在外部阻塞：本机 `security find-identity -p codesigning -v` 返回 `0 valid identities found`，因此还不能实际产出证书型 signed app。脚本已具备稳定签名路径，但需要用户先通过 Xcode/Apple Developer account/keychain 准备 `Apple Development` signing identity。
+长期稳定 TCC 签名仍需一次用户授权操作：本轮为了避免擅自修改 keychain / trust settings，没有执行会创建并信任证书的 `./script/setup_local_signing.sh` 默认路径。脚本和文档已准备好，实际生成证书、信任证书、重新授权 Accessibility 和验证非纯 `cdhash` requirement 需要用户明确运行并确认系统提示。
