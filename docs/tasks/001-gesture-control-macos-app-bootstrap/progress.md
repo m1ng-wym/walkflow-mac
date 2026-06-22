@@ -504,12 +504,33 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
   - 新增 `testSetupScriptUsesRestrictiveUmaskForGeneratedSigningMaterial`，并在生成私钥/证书/PKCS#12 前设置 `umask 077` 和临时目录 `chmod 700`。
 - 免费本地自签名 onboarding re-review 已通过：reviewer 确认上一轮 4 个 Important 和 2 个 Minor 均已关闭，未发现新的 Critical / Important / Minor。
 
+### 2026-06-22 稳定本地签名与权限现场恢复进度
+
+- 已恢复执行用户授权的免费本地自签名方案；本机已存在并使用 `WalkFlow Local Development` codesigning identity。
+- 当前 `.walkflow-local-signing.env` 为本地忽略文件，未纳入 Git；`script/build_and_run.sh` 会自动加载它并启用 `WALKFLOW_REQUIRE_CERT_SIGNING=1`。
+- 已确认 staged app 当前为证书型签名，不再是 ad-hoc 纯 `cdhash`：
+  - `/usr/bin/codesign -dr - dist/WalkFlow-Mac.app` 输出 `identifier "com.m1ngwym.walkflowmac" and certificate leaf = H"3cb958fe1d30af7e23fdcaaebaa0afc0b957e8ca"`。
+  - `/usr/bin/codesign -dvvv --entitlements :- dist/WalkFlow-Mac.app` 显示 `Authority=WalkFlow Local Development`，并包含 `com.apple.security.get-task-allow`、`com.apple.security.cs.disable-library-validation`、`com.apple.security.device.camera`。
+- 已按 TDD 补充 debug entitlements 回归：
+  - `BuildRunScriptTests.testDebugEntitlementsAllowLocalSelfSignedFrameworkLoading` 覆盖本地自签名 + Lottie binary framework 在 hardened runtime 下需要 `com.apple.security.cs.disable-library-validation`。
+  - `BuildRunScriptTests.testDebugEntitlementsAllowCameraAccessUnderHardenedRuntime` 覆盖 hardened runtime 下 Camera TCC prompt/访问需要 `com.apple.security.device.camera`。
+- 已按 TDD 补充 setup 脚本默认 keychain 清理回归：
+  - `LocalSigningSetupScriptTests.testDefaultKeychainResolutionRemovesExternalFormattingWithoutRewritingQuotedPath` 覆盖 `security default-keychain -d user` 输出格式清理，避免 keychain 路径带外层引号/格式空白导致后续 `security import` / `codesign` 参数异常，同时不改写引号内路径本身。
+- 已按 review 补强 debug entitlements 最小授权回归：
+  - `BuildRunScriptTests.testDebugEntitlementsStayMinimalForLocalDevelopment` 固定本地 debug entitlements 只能包含 `get-task-allow`、`disable-library-validation`、`device.camera` 三项。
+- 已重新执行 `./script/build_and_run.sh --verify`，结果通过；app 进程已启动。
+- 已通过 Computer Use 和屏幕截图确认主窗口摄像头预览正常显示，摄像头采集链路已恢复。
+- 已在系统设置 `隐私与安全性 -> 辅助功能` 只读确认 `WalkFlow-Mac` 开关为 `on`。
+- 已点击主窗口 `Recheck`；未再出现 Accessibility 授权弹窗，最近 TCC 日志未出现旧的 `Failed to match existing code requirement` / `cdhash` mismatch。
+- 当前 HUD 现场状态为红点空白，而不是红点加 `Alert triangle` 权限图标；这符合 `Hand Lost` / 尚未进入控制窗口状态，不再等同于 Permission 阻塞。
+- 当前剩余现场 gate：用户需要在摄像头前执行五指张开准备姿态、上/下滚动、握拳停止和 OK 捏合右侧 `Command` 的真实手势 smoke，才能判断 Phase 13.2 manual Vision gate 是否通过。
+
 ## 下一步
 
-先完成免费本地自签名 onboarding 的 code review、最终验证和本地 commit。随后用户可以显式运行 `./script/setup_local_signing.sh`，按 macOS 提示允许证书 trust 变更，再运行 `./script/build_and_run.sh --verify`。只有 `codesign -dr - dist/WalkFlow-Mac.app` 不再是纯 `cdhash` 后，才能恢复“rebuild 后不反复掉 Accessibility 授权”的长期验证。完成稳定签名后，继续 Phase 13.2 manual Vision gate。
+先完成 2026-06-22 稳定本地签名/权限恢复变更的 code review、最终验证和本地 commit。随后继续 Phase 13.2 manual Vision gate：用户在真实摄像头前依次验证五指张开进入 Ready、上/下滚动、握拳停止、OK 捏合触发右侧 `Command`，并记录稳定率、误触、延迟和 CPU/内存观察。
 
 ## 阻塞
 
 Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
 
-长期稳定 TCC 签名仍需一次用户授权操作：本轮为了避免擅自修改 keychain / trust settings，没有执行会创建并信任证书的 `./script/setup_local_signing.sh` 默认路径。脚本和文档已准备好，实际生成证书、信任证书、重新授权 Accessibility 和验证非纯 `cdhash` requirement 需要用户明确运行并确认系统提示。
+长期稳定 TCC 签名的本机开发路径已跑通：当前 staged app 是 `WalkFlow Local Development` 证书签名，`codesign -dr -` 不再是纯 `cdhash`。剩余阻塞不是签名/权限，而是真实手势矩阵必须由用户在设备前执行；Codex 无法代替用户做物理摄像头手势验证。

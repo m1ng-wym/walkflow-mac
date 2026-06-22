@@ -53,6 +53,15 @@ final class LocalSigningSetupScriptTests: XCTestCase {
         XCTAssertLessThan(umaskRange.lowerBound, opensslRange.lowerBound)
     }
 
+    func testDefaultKeychainResolutionRemovesExternalFormattingWithoutRewritingQuotedPath() throws {
+        let script = try localSigningScript()
+        let resolveKeychain = try substring(in: script, from: "resolve_keychain() {", to: "\n}")
+
+        XCTAssertFalse(resolveKeychain.contains("/usr/bin/tr -d"))
+        XCTAssertTrue(resolveKeychain.contains("s/^[[:space:]]*\"//"))
+        XCTAssertTrue(resolveKeychain.contains("s/\"[[:space:]]*$//"))
+    }
+
     func testSetupScriptHelpAndSyntaxAreExecutableWithoutKeychainMutation() throws {
         try runCommand(["/bin/bash", "-n", "script/setup_local_signing.sh"])
         try runCommand(["/bin/bash", "-n", "script/build_and_run.sh"])

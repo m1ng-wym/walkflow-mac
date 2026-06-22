@@ -485,6 +485,35 @@
     - `rg -n "SwiftUI|import SwiftUI" Sources Tests Package.swift script .codex`：无输出。
     - `LC_ALL=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`。
     - `.walkflow-local-signing.env` 当前不存在，确认本轮没有执行会创建 env / keychain identity / trust 修改的 setup 正路径。
+  - 2026-06-22 稳定本地签名与权限恢复 root cause / evidence：
+    - 用户完成本地证书 trust 授权后，当前 app 已能使用 `WalkFlow Local Development` 证书签名；`codesign -dr - dist/WalkFlow-Mac.app` 输出 `identifier "com.m1ngwym.walkflowmac" and certificate leaf = H"3cb958fe1d30af7e23fdcaaebaa0afc0b957e8ca"`，不再是纯 `cdhash`。
+    - 之前 Camera prompt / preview 问题的关键 TCC 日志包含 `service: kTCCServiceCamera requires entitlement com.apple.security.device.camera but it is missing`；因此在 hardened runtime debug entitlements 中加入 `com.apple.security.device.camera` 是必要修复，不是无关权限扩张。
+    - Lottie binary framework 在本地自签名 + hardened runtime 下需要允许本地 framework 加载；`com.apple.security.cs.disable-library-validation` 仅放在 `script/WalkFlowMac.debug.entitlements`，文档中已明确这是本地 debug entitlements，不是分发 entitlements。
+    - `security default-keychain -d user` 的输出可能带引号和换行/空白；`setup_local_signing.sh` 现在对默认 keychain 路径做 trim，避免写入 `.walkflow-local-signing.env` 或传给 `security import` / `codesign` 时带脏字符。
+    - 通过 Computer Use 只读检查系统设置 `隐私与安全性 -> 辅助功能`，`WalkFlow-Mac_Toggle` 当前为 `on`。
+    - 屏幕截图显示 HUD 当前为红点空白，不是红点加 `Alert triangle`；结合 `HUDStateReducerTests.testPermissionBlockShowsRedAlert` 与 `testHandLostPassesThroughRedDotEmptyIcon`，当前状态更符合 `Hand Lost` / 未进入控制窗口，而非 Permission 阻塞。
+  - 2026-06-22 TDD / verification：
+    - `swift test --filter BuildRunScriptTests`：14 个 XCTest，0 failures。
+    - `swift test --filter LocalSigningSetupScriptTests`：9 个 XCTest，0 failures。
+    - `swift test`：115 个 XCTest，0 failures。
+    - `swift build -c debug --product WalkFlowMac`：通过。
+    - `bash -n script/setup_local_signing.sh && bash -n script/build_and_run.sh`：通过。
+    - `plutil -lint script/WalkFlowMac.debug.entitlements`：通过；`plutil -p` 确认 debug entitlements 包含 `get-task-allow`、`disable-library-validation`、`device.camera`。
+    - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`，并验证 nested `Lottie.framework` 和 app bundle 均 `valid on disk` / `satisfies its Designated Requirement`。
+    - `/usr/bin/codesign -dr - dist/WalkFlow-Mac.app`：输出证书型 designated requirement，非纯 `cdhash`。
+    - `/usr/bin/codesign -dvvv --entitlements :- dist/WalkFlow-Mac.app`：显示 `Authority=WalkFlow Local Development`，entitlements 符合 debug 预期。
+    - `rg -n "SwiftUI|import SwiftUI" Package.swift Sources Tests script .codex`：无输出，确认未引入 SwiftUI。
+    - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`，冻结计划未修改。
+    - `git diff --check`：通过。
+  - 2026-06-22 scope / residual risk：
+    - 自动化验证和系统设置检查证明签名、Camera entitlement、app launch、摄像头预览和 Accessibility 开关状态已恢复到可继续现场验证的状态。
+    - 该验证不能证明真实手势矩阵已通过；五指张开 Ready、上/下滚动、握拳停止、OK 捏合右侧 `Command`、误触和延迟仍需用户在摄像头前执行 Phase 13.2 manual Vision gate。
+    - 当前未新增 AppleEvents 或 Microphone entitlement；TCC 日志中出现的 AppleEvents/Microphone hardened-runtime 提示未被本项目代码需求证实，按 Signing & Entitlements guardrail 不为无明确需求的服务添加 entitlement。
+  - 2026-06-22 code review 修复：
+    - subagent reviewer 未发现 Critical / Important，确认当前 diff 无阻塞提交问题。
+    - 已按 reviewer Minor 加强 `setup_local_signing.sh` 默认 keychain 解析：不再使用 `tr -d '"'` 全局删除引号，也不再全局 trim 引号内路径空白；现在只移除 `security default-keychain -d user` 输出格式的外层空白和外层引号。
+    - 已新增 `LocalSigningSetupScriptTests.testDefaultKeychainResolutionRemovesExternalFormattingWithoutRewritingQuotedPath`，先 RED 后 GREEN。
+    - 已新增 `BuildRunScriptTests.testDebugEntitlementsStayMinimalForLocalDevelopment`，固定 `script/WalkFlowMac.debug.entitlements` 的最小授权集合只能是 `get-task-allow`、`disable-library-validation`、`device.camera`。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。

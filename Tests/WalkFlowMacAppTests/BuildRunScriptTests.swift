@@ -44,6 +44,32 @@ final class BuildRunScriptTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/codesign"))
     }
 
+    func testDebugEntitlementsAllowLocalSelfSignedFrameworkLoading() throws {
+        let entitlements = try debugEntitlements()
+
+        XCTAssertTrue(entitlements.contains("com.apple.security.get-task-allow"))
+        XCTAssertTrue(entitlements.contains("com.apple.security.cs.disable-library-validation"))
+    }
+
+    func testDebugEntitlementsAllowCameraAccessUnderHardenedRuntime() throws {
+        let entitlements = try debugEntitlements()
+
+        XCTAssertTrue(entitlements.contains("com.apple.security.device.camera"))
+    }
+
+    func testDebugEntitlementsStayMinimalForLocalDevelopment() throws {
+        let entitlements = try debugEntitlementsDictionary()
+
+        XCTAssertEqual(
+            Set(entitlements.keys),
+            [
+                "com.apple.security.get-task-allow",
+                "com.apple.security.cs.disable-library-validation",
+                "com.apple.security.device.camera"
+            ]
+        )
+    }
+
     func testBuildScriptLoadsLocalSigningEnvBeforeReadingCodesignVariables() throws {
         let script = try buildRunScript()
 
@@ -139,6 +165,20 @@ final class BuildRunScriptTests: XCTestCase {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let scriptURL = root.appendingPathComponent("script/build_and_run.sh")
         return try String(contentsOf: scriptURL, encoding: .utf8)
+    }
+
+    private func debugEntitlements() throws -> String {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let entitlementsURL = root.appendingPathComponent("script/WalkFlowMac.debug.entitlements")
+        return try String(contentsOf: entitlementsURL, encoding: .utf8)
+    }
+
+    private func debugEntitlementsDictionary() throws -> [String: Any] {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let entitlementsURL = root.appendingPathComponent("script/WalkFlowMac.debug.entitlements")
+        let data = try Data(contentsOf: entitlementsURL)
+        let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        return try XCTUnwrap(plist as? [String: Any])
     }
 
     private func caseBranch(named label: String, in script: String) throws -> Substring {

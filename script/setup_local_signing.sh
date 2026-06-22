@@ -106,7 +106,8 @@ require_openssl() {
 
 resolve_keychain() {
   if [[ -z "$KEYCHAIN" ]]; then
-    KEYCHAIN="$(/usr/bin/security default-keychain -d user | /usr/bin/tr -d '"')"
+    KEYCHAIN="$(/usr/bin/security default-keychain -d user \
+      | /usr/bin/sed -e 's/^[[:space:]]*"//' -e 's/"[[:space:]]*$//')"
   fi
 }
 
