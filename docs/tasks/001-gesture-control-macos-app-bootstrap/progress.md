@@ -547,12 +547,25 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 已实现 `indexDown` 专属放宽：下指手势允许中指、无名指、小指中至少两根处于 folded 或 occluded 状态；仍保留食指明确向下、关键 MCP/PIP 基线点 confidence、`indexTip < indexMCP - 0.25` 的距离门槛。
 - 当前 `indexUp`、`OK`、`openPalm`、`fist` 不使用这条 occluded companion finger 放宽路径。
 
+### 2026-06-22 Ready 内瞬时红点打断 indexDown 的状态机修复进度
+
+- 用户复测后确认截图姿态下仍无反应，并观察到从五指张开 Ready 过渡到一指向下时，HUD 状态点会瞬间从绿变红。
+- 已确认根因不再是单纯 `indexDown` 分类规则：`GestureStateMachine` 在 `.ready` 内遇到单帧 `.fist` 或 `.handLost` 会立即切到 `.standby` 并红点输出 `.stopContinuousScroll`；而滚动触发需要 `indexDown` 稳定保持约 300ms。
+- 已按 TDD 新增并跑通状态机测试：
+  - `testTransientFistDuringReadyDoesNotCancelNextIndexDownScroll`
+  - `testTransientHandLostDuringReadyDoesNotCancelNextIndexDownScroll`
+  - `testConfirmedFistStopsContinuousScroll`
+  - `testConfirmedHandLostStopsContinuousScroll`
+  - `testPendingExitDoesNotRefreshReadyWindowTimeout`
+- 已实现 `.ready` 内退出抗抖：`.fist` / `.handLost` 需要连续确认 0.2 秒才退出 Ready；短暂过渡帧保持 Ready、HUD 仍为绿点，不刷新 5 秒控制窗口，也不触发停止动作。
+- 已保留用户明确要求的“握拳停止”和“手部离开画面退出”：持续确认后的 `.fist` / `.handLost` 仍会退出 Ready，并停止连续滚动。
+
 ## 下一步
 
-先完成 2026-06-22 用户截图姿态下 `indexDown` 二次优化的 code review、最终验证、重新 build/run 和本地 commit。随后用户复测近距离“一指向下”：先五指张开进入 Ready，再做截图中的常用一指向下姿势；如果 HUD 显示 Arrow Down 且屏幕滚动，则记录近距离手势 smoke 通过，再进入 1 到 2 米距离验证。
+先完成 2026-06-22 Ready 内瞬时红点打断 `indexDown` 的状态机修复的最终验证、重新 build/run 和本地 commit。随后用户复测近距离“一指向下”：先五指张开进入 Ready，再做截图中的常用一指向下姿势；如果 HUD 不再短闪红点、显示 Arrow Down 且屏幕滚动，则记录近距离手势 smoke 通过，再进入 1 到 2 米距离验证。
 
 ## 阻塞
 
-Phase 13.2 当前仍存在真实外部阻塞：`indexDown` 二次优化需要 build/run 后由用户在设备前复测截图中的常用下指姿势，并继续执行 1 到 2 米真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
+Phase 13.2 当前仍存在真实外部阻塞：Ready 内退出抗抖需要 build/run 后由用户在设备前复测截图中的常用下指姿势，并继续执行 1 到 2 米真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
 
 长期稳定 TCC 签名的本机开发路径已跑通：当前 staged app 是 `WalkFlow Local Development` 证书签名，`codesign -dr -` 不再是纯 `cdhash`。剩余阻塞不是签名/权限，而是真实手势矩阵必须由用户在设备前执行；Codex 无法代替用户做物理摄像头手势验证。

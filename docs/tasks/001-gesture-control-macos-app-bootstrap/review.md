@@ -560,6 +560,25 @@
   - 2026-06-22 indexDown screenshot-pose residual risk：
     - 新规则会把低 confidence 的非食指指尖视为 occluded，这提升下指识别稳定性，但仍可能在控制窗口内把“食指向下且非食指不可见”的姿态识别为滚动；当前用“至少两根 companion finger folded/occluded”和明显向下距离门槛控制误触。
     - 仍缺真实 Vision landmark replay 测试；如果后续能记录截图姿态的原始关键点，应加入固定回归。
+  - 2026-06-22 Ready 内瞬时红点打断 indexDown root cause：
+    - 用户复测观察到从 Ready 进入一指向下时，HUD 状态点会瞬间从绿变红；这与状态机旧行为一致。
+    - 旧 `GestureStateMachine` 在 `.ready` 内收到任意单帧 `.fist` 或 `.handLost` 会立即 `mode = .standby`，返回红点 HUD 和 `.stopContinuousScroll`。
+    - `indexDown` 滚动需要同一手势稳定达到 `scrollHoldMilliseconds`，因此过渡中的单帧 `.fist` / `.handLost` 会让后续 `indexDown` 因已不在 Ready 而无法触发滚动。
+  - 2026-06-22 Ready 内退出抗抖 TDD：
+    - RED：`testTransientFistDuringReadyDoesNotCancelNextIndexDownScroll` 和 `testTransientHandLostDuringReadyDoesNotCancelNextIndexDownScroll` 证明单帧 `.fist` / `.handLost` 会打断 Ready，并导致后续 `.indexDown` 没有滚动。
+    - GREEN：`.ready` 内 `.fist` / `.handLost` 需要连续确认 0.2 秒才退出；短暂 pending exit 保持 Ready、绿点 HUD，不触发停止动作。
+    - Guard：`testFistExitsControlWindowWithRedDot`、`testHandLostShowsRedDotAndExitsReady`、`testConfirmedFistStopsContinuousScroll`、`testConfirmedHandLostStopsContinuousScroll` 证明持续握拳/手离开仍会退出 Ready 并停止连续滚动。
+    - Guard：`testPendingExitDoesNotRefreshReadyWindowTimeout` 证明 pending exit 不刷新 5 秒控制窗口。
+  - 2026-06-22 Ready 内退出抗抖 current verification：
+    - `swift test --filter GestureStateMachineTests`：17 个 XCTest，0 failures。
+    - `swift test`：127 个 XCTest，0 failures。
+    - `swift build -c debug --product WalkFlowMac`：通过。
+    - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`，并重新签名启动修复后的 app。
+    - `/usr/bin/codesign -dr - dist/WalkFlow-Mac.app`：仍为证书型 designated requirement，非纯 `cdhash`。
+    - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`。
+    - `rg -n "SwiftUI|import SwiftUI" Package.swift Sources Tests script .codex || true`：无命中。
+    - `git diff --check`：通过。
+    - 只读 subagent code review：Critical / Important / Minor 阻塞均无发现，结论为可以提交；建议补充的“pending exit 不刷新控制窗口”测试已补。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。

@@ -67,6 +67,48 @@ final class GestureStateMachineTests: XCTestCase {
         XCTAssertEqual(continuous.hud.icon, .arrowDown)
     }
 
+    func testTransientFistDuringReadyDoesNotCancelNextIndexDownScroll() {
+        var machine = readyMachine()
+
+        let transient = machine.handle(.init(kind: .fist, confidence: 1, timestamp: 1.00))
+        _ = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.05))
+        let single = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.36))
+
+        XCTAssertEqual(transient.mode, .ready)
+        XCTAssertEqual(transient.action, .none)
+        XCTAssertEqual(transient.hud.dot, .green)
+        XCTAssertEqual(single.action, .scrollDown(step: .single))
+        XCTAssertEqual(single.hud.icon, .arrowDown)
+    }
+
+    func testTransientHandLostDuringReadyDoesNotCancelNextIndexDownScroll() {
+        var machine = readyMachine()
+
+        let transient = machine.handle(.init(kind: .handLost, confidence: 0, timestamp: 1.00))
+        _ = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.05))
+        let single = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.36))
+
+        XCTAssertEqual(transient.mode, .ready)
+        XCTAssertEqual(transient.action, .none)
+        XCTAssertEqual(transient.hud.dot, .green)
+        XCTAssertEqual(single.action, .scrollDown(step: .single))
+        XCTAssertEqual(single.hud.icon, .arrowDown)
+    }
+
+    func testPendingExitDoesNotRefreshReadyWindowTimeout() {
+        var machine = readyMachine()
+
+        let pending = machine.handle(.init(kind: .fist, confidence: 1, timestamp: 5.20))
+        let expired = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 5.32))
+
+        XCTAssertEqual(pending.mode, .ready)
+        XCTAssertEqual(pending.action, .none)
+        XCTAssertEqual(expired.mode, .standby)
+        XCTAssertEqual(expired.action, .none)
+        XCTAssertEqual(expired.hud.icon, .none)
+        XCTAssertEqual(expired.hud.dot, .green)
+    }
+
     func testGestureChangeStopsContinuousScroll() {
         var machine = readyMachine()
         _ = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.00))
@@ -75,6 +117,36 @@ final class GestureStateMachineTests: XCTestCase {
         let result = machine.handle(.init(kind: .openPalm, confidence: 1, timestamp: 1.80))
 
         XCTAssertEqual(result.action, .stopContinuousScroll)
+    }
+
+    func testConfirmedFistStopsContinuousScroll() {
+        var machine = readyMachine()
+        _ = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.00))
+        _ = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.72))
+
+        let pending = machine.handle(.init(kind: .fist, confidence: 1, timestamp: 1.80))
+        let result = machine.handle(.init(kind: .fist, confidence: 1, timestamp: 2.01))
+
+        XCTAssertEqual(pending.action, .none)
+        XCTAssertEqual(pending.mode, .ready)
+        XCTAssertEqual(result.mode, .standby)
+        XCTAssertEqual(result.action, .stopContinuousScroll)
+        XCTAssertEqual(result.hud.dot, .red)
+    }
+
+    func testConfirmedHandLostStopsContinuousScroll() {
+        var machine = readyMachine()
+        _ = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.00))
+        _ = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.72))
+
+        let pending = machine.handle(.init(kind: .handLost, confidence: 0, timestamp: 1.80))
+        let result = machine.handle(.init(kind: .handLost, confidence: 0, timestamp: 2.01))
+
+        XCTAssertEqual(pending.action, .none)
+        XCTAssertEqual(pending.mode, .ready)
+        XCTAssertEqual(result.mode, .standby)
+        XCTAssertEqual(result.action, .stopContinuousScroll)
+        XCTAssertEqual(result.hud.dot, .red)
     }
 
     func testOKPinchTriggersRightCommandOnceUntilReleased() {
@@ -158,8 +230,12 @@ final class GestureStateMachineTests: XCTestCase {
     func testFistExitsControlWindowWithRedDot() {
         var machine = readyMachine()
 
-        let result = machine.handle(.init(kind: .fist, confidence: 1, timestamp: 1.00))
+        let pending = machine.handle(.init(kind: .fist, confidence: 1, timestamp: 1.00))
+        let result = machine.handle(.init(kind: .fist, confidence: 1, timestamp: 1.21))
 
+        XCTAssertEqual(pending.mode, .ready)
+        XCTAssertEqual(pending.action, .none)
+        XCTAssertEqual(pending.hud.dot, .green)
         XCTAssertEqual(result.mode, .standby)
         XCTAssertEqual(result.action, .stopContinuousScroll)
         XCTAssertEqual(result.hud.dot, .red)
@@ -169,8 +245,12 @@ final class GestureStateMachineTests: XCTestCase {
     func testHandLostShowsRedDotAndExitsReady() {
         var machine = readyMachine()
 
-        let result = machine.handle(.init(kind: .handLost, confidence: 1, timestamp: 1.00))
+        let pending = machine.handle(.init(kind: .handLost, confidence: 0, timestamp: 1.00))
+        let result = machine.handle(.init(kind: .handLost, confidence: 0, timestamp: 1.21))
 
+        XCTAssertEqual(pending.mode, .ready)
+        XCTAssertEqual(pending.action, .none)
+        XCTAssertEqual(pending.hud.dot, .green)
         XCTAssertEqual(result.mode, .standby)
         XCTAssertEqual(result.hud.dot, .red)
         XCTAssertEqual(result.hud.icon, .none)

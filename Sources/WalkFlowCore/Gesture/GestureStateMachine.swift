@@ -20,6 +20,8 @@ public struct GestureStateOutput: Equatable, Sendable {
 }
 
 public struct GestureStateMachine {
+    private static let exitGestureConfirmationSeconds: TimeInterval = 0.2
+
     private let settings: AppSettings
     private var mode: GestureMode = .standby
     private var currentGesture: GestureKind = .none
@@ -30,14 +32,22 @@ public struct GestureStateMachine {
     private var okPinchLatched = false
     private var okCooldownUntil: TimeInterval = 0
     private var isVoiceInputActive = false
+    private var pendingExitGesture: GestureKind?
+    private var pendingExitStartedAt: TimeInterval?
 
     public init(settings: AppSettings) {
         self.settings = settings
     }
 
     public mutating func handle(_ observation: GestureObservation) -> GestureStateOutput {
+        let shouldDebounceExit = mode == .ready && (observation.kind == .handLost || observation.kind == .fist)
         let shouldStopContinuousForGestureChange = isContinuousScrolling && observation.kind != currentGesture
-        updateGestureTracking(with: observation)
+        if shouldDebounceExit {
+            updatePendingExit(with: observation)
+        } else {
+            clearPendingExit()
+            updateGestureTracking(with: observation)
+        }
 
         if mode == .ready,
            isVoiceInputActive,
@@ -69,12 +79,20 @@ public struct GestureStateMachine {
 
         switch observation.kind {
         case .handLost:
+            guard shouldDebounceExit == false || pendingExitIsConfirmed(at: observation.timestamp) else {
+                return output(action: .none, hud: defaultHUD())
+            }
             mode = .standby
             isContinuousScrolling = false
+            clearPendingExit()
             return output(action: .stopContinuousScroll, hud: .init(dot: .red, icon: .none, message: "Hand Lost"))
         case .fist:
+            guard shouldDebounceExit == false || pendingExitIsConfirmed(at: observation.timestamp) else {
+                return output(action: .none, hud: defaultHUD())
+            }
             mode = .standby
             isContinuousScrolling = false
+            clearPendingExit()
             return output(action: .stopContinuousScroll, hud: .init(dot: .red, icon: .none, message: "Stop"))
         case .openPalm:
             okPinchLatched = false
@@ -101,6 +119,25 @@ public struct GestureStateMachine {
             }
             return output(action: .none, hud: defaultHUD())
         }
+    }
+
+    private mutating func updatePendingExit(with observation: GestureObservation) {
+        if pendingExitGesture != observation.kind {
+            pendingExitGesture = observation.kind
+            pendingExitStartedAt = observation.timestamp
+        }
+    }
+
+    private mutating func clearPendingExit() {
+        pendingExitGesture = nil
+        pendingExitStartedAt = nil
+    }
+
+    private func pendingExitIsConfirmed(at timestamp: TimeInterval) -> Bool {
+        guard let pendingExitStartedAt else {
+            return false
+        }
+        return timestamp - pendingExitStartedAt >= Self.exitGestureConfirmationSeconds
     }
 
     private mutating func updateGestureTracking(with observation: GestureObservation) {
