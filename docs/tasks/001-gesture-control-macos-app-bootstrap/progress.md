@@ -536,12 +536,23 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 已新增 `GestureClassifierTests.testIndexDownRequiresTipClearlyBelowPalm`，防止放宽后把没有明显向下分离的姿态误判成 `.indexDown`。
 - 已重新执行 `./script/build_and_run.sh --verify`，修复后的 app 已重新 build、证书签名并启动，等待用户复测“一指向下”。
 
+### 2026-06-22 用户截图姿态下的 indexDown 二次优化进度
+
+- 用户提供常用“一指向下”截图后确认：上一轮透视压缩修复后，真实姿态仍然识别迟钝或无反应。
+- 已重新做根因收敛：截图姿态中拇指横向张开不是主要问题；更可能的问题是中指、无名指、小指在手背旋转和遮挡下无法稳定满足“全部高置信度且全部 curled”的旧前置条件。
+- 已按 TDD 新增用户截图姿态相关测试：
+  - `testIndexDownAllowsOccludedFoldedCompanionFingertips` 先 RED：非食指指尖低置信度时旧实现直接返回 `.handLost`。
+  - `testIndexDownAllowsOneVisibleCompanionFingerPerspectiveMismatch` 先 RED：三根非食指中一根因透视看起来不 curled 时旧实现返回 `.none`。
+  - `testIndexDownRejectsVisibleExtendedCompanionFingers` 和 `testIndexDownRejectsOnlyOneFoldedCompanionFinger` 作为误触 guard，确保明显多指伸开或只有一根 companion finger 折叠时不会触发 `.indexDown`。
+- 已实现 `indexDown` 专属放宽：下指手势允许中指、无名指、小指中至少两根处于 folded 或 occluded 状态；仍保留食指明确向下、关键 MCP/PIP 基线点 confidence、`indexTip < indexMCP - 0.25` 的距离门槛。
+- 当前 `indexUp`、`OK`、`openPalm`、`fist` 不使用这条 occluded companion finger 放宽路径。
+
 ## 下一步
 
-先完成 2026-06-22 `indexDown` bugfix 的 code review、最终验证和本地 commit。随后用户复测近距离“一指向下”：先五指张开进入 Ready，再做一指向下；如果 HUD 显示 Arrow Down 且屏幕滚动，则记录近距离手势 smoke 通过，再进入 1 到 2 米距离验证。
+先完成 2026-06-22 用户截图姿态下 `indexDown` 二次优化的 code review、最终验证、重新 build/run 和本地 commit。随后用户复测近距离“一指向下”：先五指张开进入 Ready，再做截图中的常用一指向下姿势；如果 HUD 显示 Arrow Down 且屏幕滚动，则记录近距离手势 smoke 通过，再进入 1 到 2 米距离验证。
 
 ## 阻塞
 
-Phase 13.2 当前仍存在真实外部阻塞：`indexDown` 自动化 bugfix 已运行到 app，但仍必须由用户在设备前复测“一指向下”，并继续执行 1 到 2 米真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
+Phase 13.2 当前仍存在真实外部阻塞：`indexDown` 二次优化需要 build/run 后由用户在设备前复测截图中的常用下指姿势，并继续执行 1 到 2 米真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
 
 长期稳定 TCC 签名的本机开发路径已跑通：当前 staged app 是 `WalkFlow Local Development` 证书签名，`codesign -dr -` 不再是纯 `cdhash`。剩余阻塞不是签名/权限，而是真实手势矩阵必须由用户在设备前执行；Codex 无法代替用户做物理摄像头手势验证。

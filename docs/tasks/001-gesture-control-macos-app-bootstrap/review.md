@@ -536,6 +536,30 @@
   - 2026-06-22 indexDown code review：
     - 已使用 subagent 进行只读 code review，结果为 Critical / Important / Minor 均无发现。
     - reviewer 建议后续如果能采集真实 20cm Vision landmark，可补一条 replay 回归测试；该建议不阻塞当前 bugfix 提交。
+  - 2026-06-22 indexDown screenshot-pose root cause：
+    - 用户提供常用下指截图后，上一轮修复仍表现迟钝或无反应；这说明单纯放宽 `indexPIP` / `indexMCP` 单调关系不够。
+    - 只读 subagent 与主线程检查一致：截图姿态最可能卡在 `isIndexDirection(up: false)` 对 middle/ring/little 三根非食指“全部 curled”的前置条件，以及 `hasRequiredConfidence` 对这些被遮挡指尖的全局 confidence 总闸门。
+    - 状态机的 0.2 到 0.4 秒稳定触发窗口会放大分类抖动：如果下指姿态在 `.handLost` / `.none` / `.indexDown` 之间跳动，用户体验就是“迟钝”。
+  - 2026-06-22 indexDown screenshot-pose TDD：
+    - RED：`GestureClassifierTests.testIndexDownAllowsOccludedFoldedCompanionFingertips` 证明非食指指尖被遮挡导致低 confidence 时，旧实现直接返回 `.handLost`。
+    - RED：`GestureClassifierTests.testIndexDownAllowsOneVisibleCompanionFingerPerspectiveMismatch` 证明只要一根非食指因透视不满足 curled，旧实现会拒绝 `.indexDown`。
+    - Guard：`GestureClassifierTests.testIndexDownRejectsVisibleExtendedCompanionFingers` 和 `GestureClassifierTests.testIndexDownRejectsOnlyOneFoldedCompanionFinger` 锁住误触边界。
+    - GREEN：`indexDown` 专属允许 middle/ring/little 中至少两根 folded 或 occluded，同时保留食指明确向下、关键基线点 confidence 和 `indexTip < indexMCP - 0.25` 距离门槛；未放宽 `indexUp`、`OK`、`openPalm` 或 `fist`。
+  - 2026-06-22 indexDown screenshot-pose current verification：
+    - `swift test --filter GestureClassifierTests/testIndexDownAllowsOccludedFoldedCompanionFingertips --filter GestureClassifierTests/testIndexDownAllowsOneVisibleCompanionFingerPerspectiveMismatch --filter GestureClassifierTests/testIndexDownRejectsVisibleExtendedCompanionFingers --filter GestureClassifierTests/testIndexDownRejectsOnlyOneFoldedCompanionFinger`：4 个 XCTest，0 failures。
+    - `swift test --filter GestureClassifierTests`：15 个 XCTest，0 failures。
+    - `swift test`：122 个 XCTest，0 failures。
+    - `swift build -c debug --product WalkFlowMac`：通过。
+    - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`，并重新签名启动修复后的 app。
+    - `/usr/bin/codesign -dr - dist/WalkFlow-Mac.app`：仍为证书型 designated requirement，非纯 `cdhash`。
+    - `LC_ALL=C LANG=C shasum -a 256 docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`：仍为 `418fcbab21b9bcf18be86ff550bd5d1cc754f9a5bbfa71903dc556b257d198d7`。
+    - `rg -n "SwiftUI|import SwiftUI" Package.swift Sources Tests script .codex || true`：无命中。
+    - `git diff --check`：通过。
+    - 只读 subagent code review：Critical / Important 均无发现，结论为可以提交；Minor 建议已补 `testIndexDownRejectsLowConfidenceIndexTip`。
+    - 最终真实摄像头复测仍待用户执行。
+  - 2026-06-22 indexDown screenshot-pose residual risk：
+    - 新规则会把低 confidence 的非食指指尖视为 occluded，这提升下指识别稳定性，但仍可能在控制窗口内把“食指向下且非食指不可见”的姿态识别为滚动；当前用“至少两根 companion finger folded/occluded”和明显向下距离门槛控制误触。
+    - 仍缺真实 Vision landmark replay 测试；如果后续能记录截图姿态的原始关键点，应加入固定回归。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。

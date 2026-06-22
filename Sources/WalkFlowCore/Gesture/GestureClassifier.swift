@@ -14,21 +14,24 @@ public struct GestureClassifier {
             return .init(kind: .handLost, confidence: 0, timestamp: 0)
         }
 
-        guard hasRequiredConfidence(snapshot) else {
-            return .init(kind: .handLost, confidence: 0, timestamp: snapshot.timestamp)
-        }
+        let hasFullConfidence = hasRequiredConfidence(snapshot)
 
-        if isOKPinch(snapshot) {
-            return .init(kind: .okPinch, confidence: 1, timestamp: snapshot.timestamp)
-        }
-        if isOpenPalm(snapshot) {
-            return .init(kind: .openPalm, confidence: 1, timestamp: snapshot.timestamp)
-        }
-        if isIndexDirection(snapshot, up: true) {
-            return .init(kind: .indexUp, confidence: 1, timestamp: snapshot.timestamp)
+        if hasFullConfidence {
+            if isOKPinch(snapshot) {
+                return .init(kind: .okPinch, confidence: 1, timestamp: snapshot.timestamp)
+            }
+            if isOpenPalm(snapshot) {
+                return .init(kind: .openPalm, confidence: 1, timestamp: snapshot.timestamp)
+            }
+            if isIndexDirection(snapshot, up: true) {
+                return .init(kind: .indexUp, confidence: 1, timestamp: snapshot.timestamp)
+            }
         }
         if isIndexDirection(snapshot, up: false) {
             return .init(kind: .indexDown, confidence: 1, timestamp: snapshot.timestamp)
+        }
+        guard hasFullConfidence else {
+            return .init(kind: .handLost, confidence: 0, timestamp: snapshot.timestamp)
         }
         if isFist(snapshot) {
             return .init(kind: .fist, confidence: 1, timestamp: snapshot.timestamp)
@@ -46,6 +49,10 @@ public struct GestureClassifier {
         return required.allSatisfy { snapshot[$0]?.confidence ?? 0 >= minimumJointConfidence }
     }
 
+    private func hasConfidence(_ snapshot: HandPoseSnapshot, joints: [HandJointName]) -> Bool {
+        joints.allSatisfy { snapshot[$0]?.confidence ?? 0 >= minimumJointConfidence }
+    }
+
     private func isOpenPalm(_ snapshot: HandPoseSnapshot) -> Bool {
         isExtended(snapshot, tip: .indexTip, pip: .indexPIP, mcp: .indexMCP)
             && isExtended(snapshot, tip: .middleTip, pip: .middlePIP, mcp: .middleMCP)
@@ -55,10 +62,33 @@ public struct GestureClassifier {
     }
 
     private func isIndexDirection(_ snapshot: HandPoseSnapshot, up: Bool) -> Bool {
-        guard isCurled(snapshot, tip: .middleTip, pip: .middlePIP, mcp: .middleMCP),
-              isCurled(snapshot, tip: .ringTip, pip: .ringPIP, mcp: .ringMCP),
-              isCurled(snapshot, tip: .littleTip, pip: .littlePIP, mcp: .littleMCP),
-              let tip = snapshot[.indexTip],
+        guard hasConfidence(snapshot, joints: [
+            .wrist, .indexMCP, .indexPIP, .indexTip,
+            .middleMCP, .middlePIP,
+            .ringMCP, .ringPIP,
+            .littleMCP, .littlePIP
+        ]) else {
+            return false
+        }
+
+        if up {
+            guard isCurled(snapshot, tip: .middleTip, pip: .middlePIP, mcp: .middleMCP),
+                  isCurled(snapshot, tip: .ringTip, pip: .ringPIP, mcp: .ringMCP),
+                  isCurled(snapshot, tip: .littleTip, pip: .littlePIP, mcp: .littleMCP) else {
+                return false
+            }
+        } else {
+            let companionFingerCount = [
+                isFoldedOrOccluded(snapshot, tip: .middleTip, pip: .middlePIP, mcp: .middleMCP),
+                isFoldedOrOccluded(snapshot, tip: .ringTip, pip: .ringPIP, mcp: .ringMCP),
+                isFoldedOrOccluded(snapshot, tip: .littleTip, pip: .littlePIP, mcp: .littleMCP)
+            ].filter { $0 }.count
+            guard companionFingerCount >= 2 else {
+                return false
+            }
+        }
+
+        guard let tip = snapshot[.indexTip],
               let pip = snapshot[.indexPIP],
               let mcp = snapshot[.indexMCP] else {
             return false
@@ -101,6 +131,17 @@ public struct GestureClassifier {
             return false
         }
         return tip.y <= pip.y || distance(tip, mcp) < distance(pip, mcp)
+    }
+
+    private func isFoldedOrOccluded(_ snapshot: HandPoseSnapshot, tip: HandJointName, pip: HandJointName, mcp: HandJointName) -> Bool {
+        guard hasConfidence(snapshot, joints: [pip, mcp]),
+              let tipPoint = snapshot[tip] else {
+            return false
+        }
+        if tipPoint.confidence < minimumJointConfidence {
+            return true
+        }
+        return isCurled(snapshot, tip: tip, pip: pip, mcp: mcp)
     }
 
     private func thumbIsAwayFromPalm(_ snapshot: HandPoseSnapshot) -> Bool {

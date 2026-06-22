@@ -39,9 +39,39 @@ final class GestureClassifierTests: XCTestCase {
         XCTAssertEqual(result.kind, .indexDown)
     }
 
+    func testIndexDownAllowsOccludedFoldedCompanionFingertips() {
+        let classifier = GestureClassifier()
+        let result = classifier.classify(.indexDownWithOccludedFoldedCompanionFingertips(timestamp: 1))
+        XCTAssertEqual(result.kind, .indexDown)
+    }
+
+    func testIndexDownAllowsOneVisibleCompanionFingerPerspectiveMismatch() {
+        let classifier = GestureClassifier()
+        let result = classifier.classify(.indexDownWithOneVisibleCompanionFingerMismatch(timestamp: 1))
+        XCTAssertEqual(result.kind, .indexDown)
+    }
+
     func testIndexDownRequiresTipClearlyBelowPalm() {
         let classifier = GestureClassifier()
         let result = classifier.classify(.indexDownWithoutClearDownwardSeparation(timestamp: 1))
+        XCTAssertNotEqual(result.kind, .indexDown)
+    }
+
+    func testIndexDownRejectsLowConfidenceIndexTip() {
+        let classifier = GestureClassifier()
+        let result = classifier.classify(.indexDownWithLowConfidenceIndexTip(timestamp: 1))
+        XCTAssertNotEqual(result.kind, .indexDown)
+    }
+
+    func testIndexDownRejectsVisibleExtendedCompanionFingers() {
+        let classifier = GestureClassifier()
+        let result = classifier.classify(.indexDownWithVisibleExtendedCompanionFingers(timestamp: 1))
+        XCTAssertNotEqual(result.kind, .indexDown)
+    }
+
+    func testIndexDownRejectsOnlyOneFoldedCompanionFinger() {
+        let classifier = GestureClassifier()
+        let result = classifier.classify(.indexDownWithOnlyOneFoldedCompanionFinger(timestamp: 1))
         XCTAssertNotEqual(result.kind, .indexDown)
     }
 
@@ -105,12 +135,48 @@ private extension HandPoseSnapshot {
         return snapshot
     }
 
+    static func indexDownWithOccludedFoldedCompanionFingertips(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
+        var snapshot = indexDownWithPerspectiveCompressedKnuckle(timestamp: timestamp, confidence: confidence)
+        snapshot.points[.thumbTip] = HandPoint(x: 0.88, y: 0.56, confidence: confidence)
+        snapshot.points[.middleTip] = HandPoint(x: 0.54, y: 0.42, confidence: 0.2)
+        snapshot.points[.ringTip] = HandPoint(x: 0.61, y: 0.41, confidence: 0.2)
+        snapshot.points[.littleTip] = HandPoint(x: 0.68, y: 0.39, confidence: 0.2)
+        return snapshot
+    }
+
+    static func indexDownWithOneVisibleCompanionFingerMismatch(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
+        var snapshot = indexDownWithPerspectiveCompressedKnuckle(timestamp: timestamp, confidence: confidence)
+        snapshot.points[.middleTip] = HandPoint(x: 0.54, y: 0.82, confidence: confidence)
+        return snapshot
+    }
+
     static func indexDownWithoutClearDownwardSeparation(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
         var snapshot = indexDownWithPerspectiveCompressedKnuckle(timestamp: timestamp, confidence: confidence)
         snapshot.points[.indexTip] = HandPoint(x: 0.50, y: 0.22, confidence: confidence)
         snapshot.points[.indexDIP] = HandPoint(x: 0.50, y: 0.30, confidence: confidence)
         return snapshot
     }
+
+    static func indexDownWithLowConfidenceIndexTip(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
+        var snapshot = indexDownWithOccludedFoldedCompanionFingertips(timestamp: timestamp, confidence: confidence)
+        snapshot.points[.indexTip] = HandPoint(x: 0.50, y: 0.08, confidence: 0.2)
+        return snapshot
+    }
+
+    static func indexDownWithVisibleExtendedCompanionFingers(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
+        var snapshot = indexDownWithPerspectiveCompressedKnuckle(timestamp: timestamp, confidence: confidence)
+        snapshot.points[.middleTip] = HandPoint(x: 0.54, y: 0.82, confidence: confidence)
+        snapshot.points[.ringTip] = HandPoint(x: 0.62, y: 0.78, confidence: confidence)
+        snapshot.points[.littleTip] = HandPoint(x: 0.70, y: 0.72, confidence: confidence)
+        return snapshot
+    }
+
+    static func indexDownWithOnlyOneFoldedCompanionFinger(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
+        var snapshot = indexDownWithVisibleExtendedCompanionFingers(timestamp: timestamp, confidence: confidence)
+        snapshot.points[.middleTip] = HandPoint(x: 0.55, y: 0.45, confidence: confidence)
+        return snapshot
+    }
+
 
     static func fist(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
         fixture(timestamp: timestamp, confidence: confidence, tips: [
