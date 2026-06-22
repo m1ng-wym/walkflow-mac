@@ -525,12 +525,23 @@ Git 远端关联、首次 commit 和首次 push 已完成。当前分支为 `mai
 - 当前 HUD 现场状态为红点空白，而不是红点加 `Alert triangle` 权限图标；这符合 `Hand Lost` / 尚未进入控制窗口状态，不再等同于 Permission 阻塞。
 - 当前剩余现场 gate：用户需要在摄像头前执行五指张开准备姿态、上/下滚动、握拳停止和 OK 捏合右侧 `Command` 的真实手势 smoke，才能判断 Phase 13.2 manual Vision gate 是否通过。
 
+### 2026-06-22 手势 smoke 近距离结果与 indexDown 修复进度
+
+- 用户已在距离摄像头约 20cm 内依次执行五指张开、一指向上、一指向下、握拳停止、OK 捏合。
+- 现场结果：除“一指向下”外，其他动作均能被识别，HUD 图标会出现，且电脑上的滚动或右侧 `Command` 动作会触发。
+- 已将问题范围收窄到 `GestureClassifier` 的 `indexDown` 几何分类；Camera、Vision 基础输出、权限、状态机、HUD、滚动事件和右侧 `Command` 输出主链路已通过近距离 smoke 的部分验证。
+- 已按 TDD 新增 `GestureClassifierTests.testIndexDownAllowsPerspectiveCompressedKnuckleOrder`：
+  - RED：透视压缩下的向下食指被分类为 `.fist`，不是 `.indexDown`。
+  - GREEN：`indexDown` 不再要求 `indexPIP.y < indexMCP.y` 严格单调，只要求 `indexTip` 明显低于 `indexPIP` 和 `indexMCP`，并继续保留 `indexTip < indexMCP - 0.25` 的明显向下距离门槛。
+- 已新增 `GestureClassifierTests.testIndexDownRequiresTipClearlyBelowPalm`，防止放宽后把没有明显向下分离的姿态误判成 `.indexDown`。
+- 已重新执行 `./script/build_and_run.sh --verify`，修复后的 app 已重新 build、证书签名并启动，等待用户复测“一指向下”。
+
 ## 下一步
 
-先完成 2026-06-22 稳定本地签名/权限恢复变更的 code review、最终验证和本地 commit。随后继续 Phase 13.2 manual Vision gate：用户在真实摄像头前依次验证五指张开进入 Ready、上/下滚动、握拳停止、OK 捏合触发右侧 `Command`，并记录稳定率、误触、延迟和 CPU/内存观察。
+先完成 2026-06-22 `indexDown` bugfix 的 code review、最终验证和本地 commit。随后用户复测近距离“一指向下”：先五指张开进入 Ready，再做一指向下；如果 HUD 显示 Arrow Down 且屏幕滚动，则记录近距离手势 smoke 通过，再进入 1 到 2 米距离验证。
 
 ## 阻塞
 
-Phase 13.2 当前仍存在真实外部阻塞：必须由用户在设备前执行真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
+Phase 13.2 当前仍存在真实外部阻塞：`indexDown` 自动化 bugfix 已运行到 app，但仍必须由用户在设备前复测“一指向下”，并继续执行 1 到 2 米真实摄像头/真实手势矩阵，才能记录 Vision gate 结果并决定是否进入 MediaPipe spike。
 
 长期稳定 TCC 签名的本机开发路径已跑通：当前 staged app 是 `WalkFlow Local Development` 证书签名，`codesign -dr -` 不再是纯 `cdhash`。剩余阻塞不是签名/权限，而是真实手势矩阵必须由用户在设备前执行；Codex 无法代替用户做物理摄像头手势验证。

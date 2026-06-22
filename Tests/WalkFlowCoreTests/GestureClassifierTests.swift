@@ -33,6 +33,18 @@ final class GestureClassifierTests: XCTestCase {
         XCTAssertEqual(result.kind, .indexDown)
     }
 
+    func testIndexDownAllowsPerspectiveCompressedKnuckleOrder() {
+        let classifier = GestureClassifier()
+        let result = classifier.classify(.indexDownWithPerspectiveCompressedKnuckle(timestamp: 1))
+        XCTAssertEqual(result.kind, .indexDown)
+    }
+
+    func testIndexDownRequiresTipClearlyBelowPalm() {
+        let classifier = GestureClassifier()
+        let result = classifier.classify(.indexDownWithoutClearDownwardSeparation(timestamp: 1))
+        XCTAssertNotEqual(result.kind, .indexDown)
+    }
+
     func testFistRequiresAllFingersCurled() {
         let classifier = GestureClassifier()
         let result = classifier.classify(.fist(timestamp: 1))
@@ -83,6 +95,20 @@ private extension HandPoseSnapshot {
         ])
         snapshot.points[.indexPIP] = HandPoint(x: 0.50, y: 0.26, confidence: confidence)
         snapshot.points[.indexDIP] = HandPoint(x: 0.50, y: 0.16, confidence: confidence)
+        return snapshot
+    }
+
+    static func indexDownWithPerspectiveCompressedKnuckle(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
+        var snapshot = indexDown(timestamp: timestamp, confidence: confidence)
+        snapshot.points[.indexPIP] = HandPoint(x: 0.50, y: 0.43, confidence: confidence)
+        snapshot.points[.indexDIP] = HandPoint(x: 0.50, y: 0.24, confidence: confidence)
+        return snapshot
+    }
+
+    static func indexDownWithoutClearDownwardSeparation(timestamp: TimeInterval, confidence: Double = 1) -> HandPoseSnapshot {
+        var snapshot = indexDownWithPerspectiveCompressedKnuckle(timestamp: timestamp, confidence: confidence)
+        snapshot.points[.indexTip] = HandPoint(x: 0.50, y: 0.22, confidence: confidence)
+        snapshot.points[.indexDIP] = HandPoint(x: 0.50, y: 0.30, confidence: confidence)
         return snapshot
     }
 

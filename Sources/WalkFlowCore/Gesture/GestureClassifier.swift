@@ -63,7 +63,7 @@ public struct GestureClassifier {
               let mcp = snapshot[.indexMCP] else {
             return false
         }
-        let indexExtended = up ? (tip.y > pip.y && pip.y > mcp.y) : (tip.y < pip.y && pip.y < mcp.y)
+        let indexExtended = up ? (tip.y > pip.y && pip.y > mcp.y) : (tip.y < pip.y && tip.y < mcp.y)
         guard indexExtended else {
             return false
         }

@@ -514,6 +514,28 @@
     - 已按 reviewer Minor 加强 `setup_local_signing.sh` 默认 keychain 解析：不再使用 `tr -d '"'` 全局删除引号，也不再全局 trim 引号内路径空白；现在只移除 `security default-keychain -d user` 输出格式的外层空白和外层引号。
     - 已新增 `LocalSigningSetupScriptTests.testDefaultKeychainResolutionRemovesExternalFormattingWithoutRewritingQuotedPath`，先 RED 后 GREEN。
     - 已新增 `BuildRunScriptTests.testDebugEntitlementsStayMinimalForLocalDevelopment`，固定 `script/WalkFlowMac.debug.entitlements` 的最小授权集合只能是 `get-task-allow`、`disable-library-validation`、`device.camera`。
+  - 2026-06-22 indexDown smoke bug root cause：
+    - 用户近距离约 20cm 现场验证显示：五指张开、一指向上、握拳停止、OK 捏合均能识别并触发 HUD / 滚动 / 右侧 `Command`，只有一指向下无反应。
+    - 独立 subagent reviewer 与主线程代码检查结论一致：根因在 `GestureClassifier.isIndexDirection(up: false)` 对 `indexDown` 要求 `tip.y < pip.y && pip.y < mcp.y` 过严。
+    - 近距离摄像头透视下，Vision 容易把向下食指的 `indexPIP` 估到与 `indexMCP` 同高或略高；旧条件会拒绝该姿态，随后因为其他三指蜷缩而落入 `.fist`。
+    - 状态机不是主要问题：`GestureStateMachine` 对 `indexUp` / `indexDown` 对称处理；`VisionHandPoseProvider` 直接映射 Vision normalized point，joint map 完整。
+  - 2026-06-22 indexDown TDD：
+    - RED：新增 `GestureClassifierTests.testIndexDownAllowsPerspectiveCompressedKnuckleOrder`，旧实现把该 fixture 分类为 `.fist`，不是 `.indexDown`。
+    - GREEN：`indexDown` 放宽为 `indexTip` 低于 `indexPIP` 且低于 `indexMCP`，同时保留 `indexTip < indexMCP - 0.25` 明显向下距离门槛；不降低阈值，不改状态机，不改事件输出。
+    - Guard：新增 `GestureClassifierTests.testIndexDownRequiresTipClearlyBelowPalm`，证明没有明显低于掌根阈值的姿态不会被识别为 `.indexDown`。
+  - 2026-06-22 indexDown verification：
+    - `swift test --filter GestureClassifierTests/testIndexDownAllowsPerspectiveCompressedKnuckleOrder`：1 个 XCTest，0 failures。
+    - `swift test --filter GestureClassifierTests`：10 个 XCTest，0 failures。
+    - `swift test`：117 个 XCTest，0 failures。
+    - `swift build -c debug --product WalkFlowMac`：通过。
+    - `./script/build_and_run.sh --verify`：通过，输出 `Verified WalkFlowMac is running.`，并重新签名启动修复后的 app。
+    - `/usr/bin/codesign -dr - dist/WalkFlow-Mac.app`：仍为证书型 designated requirement，非纯 `cdhash`。
+  - 2026-06-22 indexDown residual risk：
+    - 自动化测试证明了透视压缩下的 `indexDown` 分类缺口已修复，但真实摄像头复测仍需用户完成；当前不能声明 `indexDown` 现场通过。
+    - 放宽 `indexDown` 后的主要风险是握拳误判；当前已保留明显向下距离门槛，并保留 `testFistRequiresAllFingersCurled` 与新增边界测试作为回归保护。
+  - 2026-06-22 indexDown code review：
+    - 已使用 subagent 进行只读 code review，结果为 Critical / Important / Minor 均无发现。
+    - reviewer 建议后续如果能采集真实 20cm Vision landmark，可补一条 replay 回归测试；该建议不阻塞当前 bugfix 提交。
 - 已执行只读仓库检查：`rg --files -uu`、`git status --short`、`git branch --show-current`。
 - 已执行设计规格自审：检查占位词、内部一致性、范围和歧义，并将结果写入设计规格末尾。
 - 已执行实现计划自审命令：`UNFINISHED_PATTERN="$(printf '%s|%s|%s %s|%s %s %s' 'TO''DO' 'T''BD' 'implement' 'later' 'fill' 'in' 'details')" && rg -n "待定|填充|适当|类似|后续实现|$UNFINISHED_PATTERN" docs/tasks/001-gesture-control-macos-app-bootstrap/plan.md`，结果为无命中。
