@@ -31,7 +31,6 @@ public struct GestureStateMachine {
     private var singleScrollFiredForCurrentGesture = false
     private var okPinchLatched = false
     private var okCooldownUntil: TimeInterval = 0
-    private var isVoiceInputActive = false
     private var pendingExitGesture: GestureKind?
     private var pendingExitStartedAt: TimeInterval?
 
@@ -49,16 +48,6 @@ public struct GestureStateMachine {
             updateGestureTracking(with: observation)
         }
 
-        if mode == .ready,
-           isVoiceInputActive,
-           observation.kind != .okPinch,
-           observation.kind != .handLost,
-           observation.kind != .fist {
-            okPinchLatched = false
-            isContinuousScrolling = false
-            return output(action: .none, hud: commandHUD())
-        }
-
         if shouldStopContinuousForGestureChange,
            observation.kind != .handLost,
            observation.kind != .fist {
@@ -67,7 +56,6 @@ public struct GestureStateMachine {
 
         if mode == .ready,
            let lastActionAt,
-           isVoiceInputActive == false,
            observation.timestamp - lastActionAt > settings.gestureTiming.controlWindowSeconds {
             mode = .standby
             isContinuousScrolling = false
@@ -145,6 +133,9 @@ public struct GestureStateMachine {
             if isContinuousScrolling {
                 isContinuousScrolling = false
             }
+            if currentGesture == .okPinch {
+                okPinchLatched = false
+            }
             singleScrollFiredForCurrentGesture = false
             currentGesture = observation.kind
             currentGestureStartedAt = observation.timestamp
@@ -199,32 +190,24 @@ public struct GestureStateMachine {
         }
 
         guard timestamp >= okCooldownUntil else {
-            return output(action: .none, hud: isVoiceInputActive ? commandHUD() : .init(dot: .green, icon: .none, message: "Cooldown"))
+            return output(action: .none, hud: .init(dot: .green, icon: .none, message: "Cooldown"))
         }
 
         guard okPinchLatched == false else {
-            return output(action: .none, hud: isVoiceInputActive ? commandHUD() : defaultHUD())
+            return output(action: .none, hud: defaultHUD())
         }
 
         if heldMilliseconds(at: timestamp) >= settings.gestureTiming.commandHoldMilliseconds {
             okPinchLatched = true
             okCooldownUntil = timestamp + Double(settings.gestureTiming.commandCooldownMilliseconds) / 1000.0
             lastActionAt = timestamp
-            isVoiceInputActive.toggle()
-            if isVoiceInputActive == false {
-                mode = .standby
-                isContinuousScrolling = false
-                singleScrollFiredForCurrentGesture = false
-            }
             return output(
                 action: .pressRightCommand,
-                hud: isVoiceInputActive
-                    ? .init(dot: .green, icon: .dribbble, message: "Command")
-                    : .init(dot: .green, icon: .none, message: "Standby")
+                hud: .init(dot: .green, icon: .dribbble, message: "Command")
             )
         }
 
-        return output(action: .none, hud: isVoiceInputActive ? commandHUD() : .init(dot: .green, icon: .none, message: "Command Pending"))
+        return output(action: .none, hud: .init(dot: .green, icon: .none, message: "Command Pending"))
     }
 
     private func defaultHUD() -> HUDPresentation {
@@ -234,16 +217,10 @@ public struct GestureStateMachine {
         case .blocked:
             .init(dot: .red, icon: .alertTriangle, message: "Permission")
         case .ready:
-            isVoiceInputActive
-                ? commandHUD()
-                : .init(dot: .green, icon: .infinity, message: "Ready")
+            .init(dot: .green, icon: .infinity, message: "Ready")
         case .standby:
             .init(dot: .green, icon: .none, message: "Standby")
         }
-    }
-
-    private func commandHUD() -> HUDPresentation {
-        .init(dot: .green, icon: .dribbble, message: "Command")
     }
 
     private func output(action: ControlAction, hud: HUDPresentation) -> GestureStateOutput {

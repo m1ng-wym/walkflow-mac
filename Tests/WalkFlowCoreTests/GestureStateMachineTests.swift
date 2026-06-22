@@ -155,37 +155,33 @@ final class GestureStateMachineTests: XCTestCase {
         _ = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 1.00))
         let first = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 1.31))
         let heldAfterCooldown = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 2.50))
-        let releasedDuringVoiceInput = machine.handle(.init(kind: .openPalm, confidence: 1, timestamp: 2.60))
+        let releasedAfterCommand = machine.handle(.init(kind: .openPalm, confidence: 1, timestamp: 2.60))
         _ = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 2.70))
         let second = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 3.01))
 
         XCTAssertEqual(first.action, .pressRightCommand)
         XCTAssertEqual(first.hud.icon, .dribbble)
         XCTAssertEqual(heldAfterCooldown.action, .none)
-        XCTAssertEqual(releasedDuringVoiceInput.hud.icon, .dribbble)
+        XCTAssertEqual(releasedAfterCommand.mode, .ready)
+        XCTAssertEqual(releasedAfterCommand.hud.icon, .infinity)
         XCTAssertEqual(second.action, .pressRightCommand)
-        XCTAssertEqual(second.mode, .standby)
-        XCTAssertEqual(second.hud.icon, .none)
+        XCTAssertEqual(second.mode, .ready)
+        XCTAssertEqual(second.hud.icon, .dribbble)
     }
 
-    func testCommandHUDPersistsPastReadyTimeoutUntilSecondCommand() {
+    func testCommandDoesNotPersistPastReadyTimeout() {
         var machine = readyMachine()
 
         _ = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 1.00))
         let first = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 1.31))
         let afterTimeout = machine.handle(.init(kind: .openPalm, confidence: 1, timestamp: 6.50))
-        _ = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 6.60))
-        let second = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 6.91))
 
         XCTAssertEqual(first.action, .pressRightCommand)
-        XCTAssertEqual(afterTimeout.mode, .ready)
-        XCTAssertEqual(afterTimeout.hud.icon, .dribbble)
-        XCTAssertEqual(second.action, .pressRightCommand)
-        XCTAssertEqual(second.mode, .standby)
-        XCTAssertEqual(second.hud.icon, .none)
+        XCTAssertEqual(afterTimeout.mode, .standby)
+        XCTAssertEqual(afterTimeout.hud.icon, .none)
     }
 
-    func testVoiceInputActiveSuppressesScrollAndKeepsCommandHUD() {
+    func testCommandDoesNotSuppressScrollAfterOKRelease() {
         var machine = readyMachine()
 
         _ = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 1.00))
@@ -195,19 +191,31 @@ final class GestureStateMachineTests: XCTestCase {
         let heldUp = machine.handle(.init(kind: .indexUp, confidence: 1, timestamp: 1.82))
         _ = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.90))
         let heldDown = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 2.22))
-        _ = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 2.40))
-        let second = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 2.71))
 
         XCTAssertEqual(first.action, .pressRightCommand)
-        XCTAssertEqual(heldUp.action, .none)
-        XCTAssertEqual(heldUp.hud.icon, .dribbble)
-        XCTAssertEqual(heldDown.action, .none)
-        XCTAssertEqual(heldDown.hud.icon, .dribbble)
-        XCTAssertEqual(second.action, .pressRightCommand)
-        XCTAssertEqual(second.mode, .standby)
+        XCTAssertEqual(heldUp.action, .scrollUp(step: .single))
+        XCTAssertEqual(heldUp.hud.icon, .arrowUp)
+        XCTAssertEqual(heldDown.action, .scrollDown(step: .single))
+        XCTAssertEqual(heldDown.hud.icon, .arrowDown)
     }
 
-    func testVoiceInputActiveKeepsCommandHUDDuringSecondOKPendingAndCooldown() {
+    func testCommandCanTriggerAgainAfterDirectScrollGestureRelease() {
+        var machine = readyMachine()
+
+        _ = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 1.00))
+        let first = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 1.31))
+        _ = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.40))
+        let scroll = machine.handle(.init(kind: .indexDown, confidence: 1, timestamp: 1.72))
+        _ = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 2.50))
+        let second = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 2.81))
+
+        XCTAssertEqual(first.action, .pressRightCommand)
+        XCTAssertEqual(scroll.action, .scrollDown(step: .single))
+        XCTAssertEqual(second.action, .pressRightCommand)
+        XCTAssertEqual(second.hud.icon, .dribbble)
+    }
+
+    func testCommandCooldownAndPendingDoNotKeepDribbbleLocked() {
         var machine = readyMachine()
 
         _ = machine.handle(.init(kind: .okPinch, confidence: 1, timestamp: 1.00))
@@ -219,12 +227,12 @@ final class GestureStateMachineTests: XCTestCase {
 
         XCTAssertEqual(first.action, .pressRightCommand)
         XCTAssertEqual(heldDuringCooldown.action, .none)
-        XCTAssertEqual(heldDuringCooldown.hud.icon, .dribbble)
+        XCTAssertEqual(heldDuringCooldown.hud.icon, .none)
         XCTAssertEqual(secondPending.action, .none)
-        XCTAssertEqual(secondPending.hud.icon, .dribbble)
+        XCTAssertEqual(secondPending.hud.icon, .none)
         XCTAssertEqual(second.action, .pressRightCommand)
-        XCTAssertEqual(second.mode, .standby)
-        XCTAssertEqual(second.hud.icon, .none)
+        XCTAssertEqual(second.mode, .ready)
+        XCTAssertEqual(second.hud.icon, .dribbble)
     }
 
     func testFistExitsControlWindowWithRedDot() {
