@@ -8,6 +8,14 @@ final class GestureClassifierTests: XCTestCase {
         XCTAssertEqual(result.kind, .handLost)
     }
 
+    func testNilSnapshotPreservesFrameTimestamp() {
+        let classifier = GestureClassifier()
+        let result = classifier.classify(nil, timestamp: 42.25)
+
+        XCTAssertEqual(result.kind, .handLost)
+        XCTAssertEqual(result.timestamp, 42.25)
+    }
+
     func testOpenPalmClassifiesFiveExtendedFingers() {
         let classifier = GestureClassifier()
         let result = classifier.classify(.openPalm(timestamp: 1))

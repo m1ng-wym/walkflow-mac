@@ -341,6 +341,38 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(output.actions, [.scrollUp(step: .single)])
     }
 
+    func testNilVisionFramesUseCurrentFrameTimestampToExitReadyAfterCommand() {
+        let clock = MutableTestClock(now: 0)
+        let vision = NilVisionDetector()
+        let hud = RecordingHUDPresenter()
+        let controller = AppController(
+            settingsStore: FakeSettingsStore(),
+            permissions: FakePermissionService(snapshot: PermissionSnapshot(camera: .granted, accessibility: .granted, inputMonitoring: .notRequired)),
+            camera: FakeCameraController(),
+            vision: vision,
+            eventOutput: RecordingControlEventOutput(),
+            clock: clock
+        )
+        controller.hudPresenter = hud
+
+        controller.handleObservation(.init(kind: .openPalm, confidence: 1, timestamp: 0))
+        controller.handleObservation(.init(kind: .openPalm, confidence: 1, timestamp: 0.31))
+        controller.handleObservation(.init(kind: .okPinch, confidence: 1, timestamp: 1.00))
+        controller.handleObservation(.init(kind: .okPinch, confidence: 1, timestamp: 1.31))
+        XCTAssertEqual(hud.presentations.last?.icon, .dribbble)
+
+        clock.now = 1.50
+        controller.cameraSession(CameraSessionController(), didOutput: makeSampleBuffer())
+        XCTAssertEqual(hud.presentations.last?.icon, .infinity)
+
+        clock.now = 1.72
+        controller.cameraSession(CameraSessionController(), didOutput: makeSampleBuffer())
+        XCTAssertEqual(hud.presentations.last?.dot, .red)
+        XCTAssertEqual(hud.presentations.last?.icon, HUDIcon.none)
+        XCTAssertEqual(hud.presentations.last?.message, "Hand Lost")
+        XCTAssertEqual(vision.timestamps, [1.50, 1.72])
+    }
+
     func testPauseCannotInterleaveBetweenGestureDecisionAndEventOutput() {
         let output = InterleavingControlEventOutput()
         let controller = AppController(
@@ -457,6 +489,23 @@ private final class RecordingHUDTelemetryLogger: HUDTelemetryLogging {
     }
 }
 
+private final class NilVisionDetector: VisionDetecting {
+    private(set) var timestamps: [TimeInterval] = []
+
+    func detect(sampleBuffer: CMSampleBuffer, timestamp: TimeInterval) throws -> HandPoseSnapshot? {
+        timestamps.append(timestamp)
+        return nil
+    }
+}
+
+private final class MutableTestClock: Clock {
+    var now: TimeInterval
+
+    init(now: TimeInterval) {
+        self.now = now
+    }
+}
+
 private final class InterleavingControlEventOutput: ControlEventOutput {
     weak var controller: AppController?
     let entered = DispatchSemaphore(value: 0)
@@ -468,4 +517,41 @@ private final class InterleavingControlEventOutput: ControlEventOutput {
         _ = release.wait(timeout: .now() + .seconds(2))
         observedPausedAtPost = controller?.state.isPaused ?? false
     }
+}
+
+private func makeSampleBuffer() -> CMSampleBuffer {
+    var pixelBuffer: CVPixelBuffer?
+    let pixelBufferStatus = CVPixelBufferCreate(
+        kCFAllocatorDefault,
+        1,
+        1,
+        kCVPixelFormatType_32BGRA,
+        nil,
+        &pixelBuffer
+    )
+    XCTAssertEqual(pixelBufferStatus, kCVReturnSuccess)
+
+    var formatDescription: CMVideoFormatDescription?
+    let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: pixelBuffer!,
+        formatDescriptionOut: &formatDescription
+    )
+    XCTAssertEqual(formatStatus, noErr)
+
+    var timing = CMSampleTimingInfo(
+        duration: .invalid,
+        presentationTimeStamp: CMTime(value: 1, timescale: 30),
+        decodeTimeStamp: .invalid
+    )
+    var sampleBuffer: CMSampleBuffer?
+    let sampleStatus = CMSampleBufferCreateReadyWithImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: pixelBuffer!,
+        formatDescription: formatDescription!,
+        sampleTiming: &timing,
+        sampleBufferOut: &sampleBuffer
+    )
+    XCTAssertEqual(sampleStatus, noErr)
+    return sampleBuffer!
 }

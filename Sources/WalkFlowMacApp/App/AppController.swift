@@ -51,7 +51,7 @@ protocol VisionDetecting {
 extension VisionHandPoseProvider: VisionDetecting {}
 
 protocol GestureClassifying {
-    func classify(_ snapshot: HandPoseSnapshot?) -> GestureObservation
+    func classify(_ snapshot: HandPoseSnapshot?, timestamp: TimeInterval) -> GestureObservation
 }
 
 extension GestureClassifier: GestureClassifying {}
@@ -64,6 +64,7 @@ final class AppController: CameraFrameConsumer {
     private let camera: CameraControlling
     private let vision: VisionDetecting
     private let classifier: GestureClassifying
+    private let clock: any Clock
     private let hudReducer = HUDStateReducer()
     private let eventOutput: ControlEventOutput
     private let telemetryLogger: HUDTelemetryLogging
@@ -81,13 +82,15 @@ final class AppController: CameraFrameConsumer {
         vision: VisionDetecting = VisionHandPoseProvider(),
         classifier: GestureClassifying = GestureClassifier(),
         eventOutput: ControlEventOutput = CGEventOutput(),
-        telemetryLogger: HUDTelemetryLogging = OSLogHUDTelemetryLogger()
+        telemetryLogger: HUDTelemetryLogging = OSLogHUDTelemetryLogger(),
+        clock: any Clock = SystemClock()
     ) {
         self.settingsStore = settingsStore
         self.permissions = permissions
         self.camera = camera
         self.vision = vision
         self.classifier = classifier
+        self.clock = clock
         self.eventOutput = eventOutput
         self.telemetryLogger = telemetryLogger
 
@@ -215,9 +218,9 @@ final class AppController: CameraFrameConsumer {
     }
 
     func cameraSession(_ session: CameraSessionController, didOutput sampleBuffer: CMSampleBuffer) {
-        let timestamp = Date().timeIntervalSince1970
+        let timestamp = clock.now
         let snapshot = try? vision.detect(sampleBuffer: sampleBuffer, timestamp: timestamp)
-        let observation = classifier.classify(snapshot)
+        let observation = classifier.classify(snapshot, timestamp: timestamp)
         handleObservation(observation)
     }
 

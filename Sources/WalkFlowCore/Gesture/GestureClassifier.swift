@@ -10,8 +10,12 @@ public struct GestureClassifier {
     }
 
     public func classify(_ snapshot: HandPoseSnapshot?) -> GestureObservation {
+        classify(snapshot, timestamp: snapshot?.timestamp ?? 0)
+    }
+
+    public func classify(_ snapshot: HandPoseSnapshot?, timestamp: TimeInterval) -> GestureObservation {
         guard let snapshot else {
-            return .init(kind: .handLost, confidence: 0, timestamp: 0)
+            return .init(kind: .handLost, confidence: 0, timestamp: timestamp)
         }
 
         let hasFullConfidence = hasRequiredConfidence(snapshot)
