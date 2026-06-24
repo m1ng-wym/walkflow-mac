@@ -25,6 +25,7 @@ final class MainWindowController: NSWindowController {
             defer: false
         )
         window.title = "WalkFlow-Mac"
+        window.isReleasedWhenClosed = false
         window.contentView = root
         window.center()
 

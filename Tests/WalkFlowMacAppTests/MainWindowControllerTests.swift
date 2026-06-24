@@ -41,6 +41,38 @@ final class MainWindowControllerTests: XCTestCase {
         XCTAssertTrue(previewView.previewLayer.session === camera.session)
     }
 
+    func testMainWindowIsNotReleasedWhenClosed() throws {
+        let controller = MainWindowController(appController: makeController())
+        let window = try XCTUnwrap(controller.window)
+
+        XCTAssertFalse(window.isReleasedWhenClosed)
+    }
+
+    func testDockReopenShowsMainWindowWhenNoWindowIsVisible() throws {
+        let controller = MainWindowController(appController: makeController())
+        let delegate = AppDelegate(appController: makeController(), mainWindowController: controller)
+        controller.window?.orderOut(nil)
+
+        let shouldContinueDefaultReopen = delegate.applicationShouldHandleReopen(NSApplication.shared, hasVisibleWindows: false)
+
+        XCTAssertFalse(shouldContinueDefaultReopen)
+        XCTAssertTrue(try XCTUnwrap(controller.window).isVisible)
+    }
+
+    func testDockReopenShowsMainWindowWhenHUDIsVisibleButMainWindowWasClosed() throws {
+        let controller = MainWindowController(appController: makeController())
+        let delegate = AppDelegate(appController: makeController(), mainWindowController: controller)
+        controller.showWindow(nil)
+        let window = try XCTUnwrap(controller.window)
+        window.performClose(nil)
+        XCTAssertFalse(window.isVisible)
+
+        let shouldContinueDefaultReopen = delegate.applicationShouldHandleReopen(NSApplication.shared, hasVisibleWindows: true)
+
+        XCTAssertFalse(shouldContinueDefaultReopen)
+        XCTAssertTrue(window.isVisible)
+    }
+
     func testControlPanelButtonsDriveAppControllerState() throws {
         let appController = makeController()
         let controlPanel = try controlPanel(from: MainWindowController(appController: appController))
